@@ -1,0 +1,35 @@
+#!/bin/bash
+cat << EOF
+This will update the server manager to it's latest version
+EOF
+
+#!/bin/sh
+#SMM-Installer.sh #Bootstrap to GIT REPO
+cat <<EOF
+**************************
+Please wait while we gather some files
+**************************
+
+
+Installing wget and git
+EOF
+sleep 1
+
+dnf -y install wget git 
+
+cat <<EOF
+*****************************
+Retrieving Files from GitHub
+*****************************
+EOF
+
+sleep 1
+
+mkdir /root/SMMInstaller
+
+git clone https://github.com/fumatchu/RADS-ServerManager.git /root/SMMInstaller
+
+chmod 700 /root/SMMInstaller/SMMInstall.sh
+clear
+
+/root/SMMInstaller/SMMInstall.sh

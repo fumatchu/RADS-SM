@@ -1,0 +1,33 @@
+#!/bin/bash
+#Checking for user permissions
+user=$(whoami)
+if [ "$user" != "root" ]; then
+echo ${red}"This program must be run as root ${textreset}"
+echo "Exiting"
+exit
+else
+echo "Running Program"
+fi
+textreset=$(tput sgr0)
+red=$(tput setaf 1)
+yellow=$(tput setaf 3)
+green=$(tput setaf 2)
+
+clear
+
+cat <<EOF
+Delete An AD Group:
+Please provide the following information to delete a group in Active Directory
+EOF
+samba-tool group list 
+read -p "Please provide the Name of the group to delete : " GROUPNAME
+
+
+samba-tool group delete "$GROUPNAME"
+
+echo  ${green}"Current Group List${textreset}"
+echo " "
+samba-tool group list 
+echo " " 
+read -p "Press Any Key"
+

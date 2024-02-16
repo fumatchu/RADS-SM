@@ -1,0 +1,39 @@
+#!/bin/bash
+#Checking for user permissions
+SERVER=$(hostname)
+user=$(whoami)
+if [ "$user" != "root" ]; then
+echo ${red}"This program must be run as root ${textreset}"
+echo "Exiting"
+exit
+else
+echo "Running Program"
+fi
+textreset=$(tput sgr0)
+red=$(tput setaf 1)
+yellow=$(tput setaf 3)
+green=$(tput setaf 2)
+
+clear
+
+cat <<EOF
+${green}Create a new forward Zone:${textreset}
+
+EOF
+
+echo " "
+
+echo " " 
+read -p "Please provide the name (i.e. newzone.int) for the new forward Zone: " ZONE
+
+samba-tool dns zonecreate $SERVER $ZONE -UAdministrator
+
+read -p ${yellow}"Press Any Key${textreset}"
+
+clear
+
+echo "Here is the updated Zone information:"
+
+samba-tool dns zonelist $SERVER -U Administrator
+
+

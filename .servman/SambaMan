@@ -1,0 +1,38 @@
+
+#!/bin/bash
+user=$(whoami)
+#Checking for user permissions
+if [ "$user" != "root" ]; then
+echo ${red}"This program must be run as root ${textreset}"
+echo "Exiting"
+exit
+else
+echo "Running Program"
+fi
+
+items=(1 "Start Samba Service"
+       2 "Stop Samba Service"
+       3 "Restart Samba Service" 
+       4 "Samba Service Status"
+       5 "Samba Update Synchronization Log"
+       6 "Samba Update"
+       7 "Manually Edit Samba Config"
+)
+
+while choice=$(dialog --title "$TITLE" \
+		 --backtitle "Samba Service Management" \
+                 --menu "Please select" 20 45 3 "${items[@]}" \
+                 2>&1 >/dev/tty)
+    do
+    case $choice in
+        1) /root/.servman/SambaManager/start-samba-server;;
+        2) /root/.servman/SambaManager/stop-samba-server;;
+        3) /root/.servman/SambaManager/restart-samba-server;;
+        4) /root/.servman/SambaManager/samba-server-status;;
+        5) /root/.servman/SambaManager/samba-update-log;;
+        6) /root/.servman/SambaManager/sm-samba-dnf-pkg-update;;
+        7) /root/.servman/SambaManager/samba-edit-config;;
+        *) ;; # some action on other
+    esac
+done
+clear # clear after user pressed Cancel

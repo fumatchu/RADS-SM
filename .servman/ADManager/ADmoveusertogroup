@@ -1,0 +1,41 @@
+#!/bin/bash
+#Checking for user permissions
+user=$(whoami)
+if [ "$user" != "root" ]; then
+echo ${red}"This program must be run as root ${textreset}"
+echo "Exiting"
+exit
+else
+echo "Running Program"
+fi
+textreset=$(tput sgr0)
+red=$(tput setaf 1)
+yellow=$(tput setaf 3)
+green=$(tput setaf 2)
+
+clear
+
+cat <<EOF
+Move User to AD Group:
+${yellow}Please provide the following information to add a user to group in Active Directory${textreset}
+EOF
+
+samba-tool group list 
+read -p "Please provide the Name of the group to use : " GROUPNAME
+read -p ${yellow}"Press Any Key"${textreset}
+
+clear 
+
+samba-tool user list 
+
+read -p "Please provide the user you want to add to the group: " ADUSER 
+
+samba-tool group addmembers "$GROUPNAME" "$ADUSER"
+
+
+echo " " 
+echo ${yellow}"This is the users updated Group Membership:${textreset}"
+samba-tool user show $ADUSER | grep memberOf:
+echo ${yellow}"This is the Groups Members${textreset}"
+samba-tool group show "$GROUPNAME"
+read -p "Press Any Key"

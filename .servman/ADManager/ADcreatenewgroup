@@ -1,0 +1,33 @@
+#!/bin/bash
+#Checking for user permissions
+user=$(whoami)
+if [ "$user" != "root" ]; then
+echo ${red}"This program must be run as root ${textreset}"
+echo "Exiting"
+exit
+else
+echo "Running Program"
+fi
+textreset=$(tput sgr0)
+red=$(tput setaf 1)
+yellow=$(tput setaf 3)
+green=$(tput setaf 2)
+
+clear
+
+cat <<EOF
+Create An AD Group:
+Please provide the following information to create a new group in Active Directory
+EOF
+
+read -p "Please provide the Name of the group to create : " "GROUPNAME"
+
+
+samba-tool group add "$GROUPNAME"
+
+echo  ${green}"Current Group List${textreset}"
+echo " "
+samba-tool group list 
+echo " " 
+read -p "Press Any Key"
+
