@@ -15,42 +15,58 @@ native menus into the system(ntsysv, htop, etc). You can start Server Management
 ${yellow}server-manager${textreset} from the terminal
 
 
-For an FR-RADS install the following is available:
+For a RADS install the following is available:
 
 ${green}Active Directory Management Management${textreset}
 
         -Add User
-                This will allow you to add a new user to Active Directory
-                
+                This will allow you to add a new user to Active Directory      
         -Delete User
                 Provides a scrolling list of users to determine which username you want to delete and prmopts for deletion
-
         -Password Reset
                 Provides a scrolling list of users to determine which username you want to select for password reset
-
        -List All Users 
                 Provides a Scrolling list of all users on the system  
-
         -Create New Group
                 Creates a new Group on the Default Domain
-
         -Delete Group
                 Provides a scrolling list of groups and prompts for deletion 
-
         -List Group 
                 Provides a scrolling list of groups
-
         -Move Users to Group 
                 Provides ascrolling list of users and groups to allow you to add user TO a group 
-
         -Remove User from a Group
                 Provides a scrolling list of groups fro user removal 
-This is a Preview release, maning all functionality technically works, but the module is not complete. More additions are coming 
+
+This is a Preview release, meaning all functionality technically works, but the module is not complete. More additions are coming 
         -DNS modifications/Zones
         -OU manipulation
         -Vizualizations 
-This is net designed to be a replacmeent for RSAT, but as complimentary if on the Terminal 
+This is not designed to be a replacmeent for RSAT, but as complimentary if on the Terminal 
         
+${green}Active Directory Management Management${textreset}
+
+        -Create a new DHCP Scope
+                This creates a new DHCP scope based on user input 
+        -List DHCP Leases
+        -Start DHCP Server
+        -Stop DHCP Server
+        -Restart DHCP Service
+        -Enable DHCP Service 
+        -Disable DHCP Service
+        -Provide DHCP Server Status
+        -Edit DHCP Config File, Manually
+
+${green}Samba Management${textreset}
+
+        -Start
+        -Stop
+        -Restart
+        -Samba Server Status
+        -Samba Update Sync log (dnf-smb)
+        -Samba Update (mock build for updated .src packages from Rocky)
+        -Edit Samba Config 
+
 
 ${green}System Management${textreset}
 
