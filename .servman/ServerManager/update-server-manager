@@ -1,3 +1,4 @@
+clear
 cd /root/
 dnf -y install wget
 wget https://raw.githubusercontent.com/fumatchu/RADS-SM/main/RADS-SMInstaller.sh
