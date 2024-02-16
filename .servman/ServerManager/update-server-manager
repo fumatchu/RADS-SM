@@ -1,1 +1,5 @@
-#update-server manager
+cd /root/
+dnf -y install wget
+wget https://raw.githubusercontent.com/fumatchu/RADS-SM/main/RADS-SMInstaller.sh
+chmod 700 ./RADS-SMInstaller.sh
+/root/RADS-SMInstaller.sh
