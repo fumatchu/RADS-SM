@@ -31,12 +31,14 @@ sleep 20
 dnf -y install dialog nano htop iptraf-ng mc
 rm -r -f /root/.servman
 rm -f /usr/bin/server-manager
+sed -i '/usr/bin/server-manager/d' /root/.bash_profile
 cd /root/RADS-SMInstaller
 mv -v ./.servman /root
 chmod 700 /root/RADS-SMInstaller/server-manager
 mv -v /root/RADS-SMInstaller/server-manager /usr/bin/
 chmod -R 700 /root/.servman/
 echo "/usr/bin/server-manager" >>/root/.bash_profile
-/usr/bin/server-manager
+
 rm -r -f /root/RADS-SMInstaller
 rm -r -f /root/RADS-SMInstaller.sh
+/usr/bin/server-manager
