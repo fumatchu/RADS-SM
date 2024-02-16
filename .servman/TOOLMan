@@ -1,0 +1,30 @@
+#!/bin/bash
+user=$(whoami)
+#Checking for user permissions
+if [ "$user" != "root" ]; then
+echo ${red}"This program must be run as root ${textreset}"
+echo "Exiting"
+exit
+else
+echo "Running Program"
+fi
+
+items=(1 "Process Monitor"
+       2 "Network Monitor"
+       3 "File Manager"
+       4 "Editor"
+)
+
+while choice=$(dialog --title "$TITLE" \
+                 --backtitle "System Management" \
+                 --menu "Please select" 20 40 3 "${items[@]}" \
+                 2>&1 >/dev/tty)
+    do
+    case $choice in
+        1) htop;;
+        2) iptraf-ng;;
+        3) mc;;
+        4) nano;;
+    esac
+done
+clear # clear after user pressed Cancel
