@@ -20,8 +20,8 @@ fi
 cat <<EOF
 This Installer will provide a GUI Driven menu for interacting with your system.
 You can disable it, or not use it at all if you are comfortable with CLI.
-However, there are tools built in for diagnotstics on FreeRADIUS and testers to
-assist in troubleshooting or validating configurations.
+However, there are scripts that have been written to assist you in AD management
+and DHCP Management
 
 
 The installer will continue shortly
