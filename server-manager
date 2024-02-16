@@ -1,31 +1,28 @@
-
 #!/bin/bash
 user=$(whoami)
 #Checking for user permissions
 if [ "$user" != "root" ]; then
-echo ${red}"This program must be run as root ${textreset}"
-echo "Exiting"
-exit
+    echo ${red}"This program must be run as root ${textreset}"
+    echo "Exiting"
+    exit
 else
-echo "Running Program"
+    echo "Running Program"
 fi
 
-
 items=(1 "Active Directory Management"
-       2 "DHCP Management"
-       3 "Samba Service Management"
-       4 "System Management")
+    2 "DHCP Management"
+    3 "Samba Service Management"
+    4 "System Management")
 
 while choice=$(dialog --title "$TITLE" \
-		 --backtitle "Server Management" \
-                 --menu "Please select" 20 40 3 "${items[@]}" \
-                 2>&1 >/dev/tty)
-    do
+    --backtitle "Server Management" \
+    --menu "Please select" 20 40 3 "${items[@]}" \
+    2>&1 >/dev/tty); do
     case $choice in
-        1) /root/.servman/ADMan;; # some action on 1
-        2) /root/.servman/DHCPMan;; # some action on 2
-	3) /root/.servman/SambaMan;;
-        4) /root/.servman/SYSMan;; # some action on other
+    1) /root/.servman/ADMan ;;   # some action on 1
+    2) /root/.servman/DHCPMan ;; # some action on 2
+    3) /root/.servman/SambaMan ;;
+    4) /root/.servman/SYSMan ;; # some action on other
     esac
 done
 clear # clear after user pressed Cancel

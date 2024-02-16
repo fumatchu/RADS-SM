@@ -2,11 +2,11 @@
 #Checking for user permissions
 user=$(whoami)
 if [ "$user" != "root" ]; then
-echo ${red}"This program must be run as root ${textreset}"
-echo "Exiting"
-exit
+    echo ${red}"This program must be run as root ${textreset}"
+    echo "Exiting"
+    exit
 else
-echo "Running Program"
+    echo "Running Program"
 fi
 textreset=$(tput sgr0)
 red=$(tput setaf 1)
@@ -22,11 +22,9 @@ EOF
 
 echo " "
 samba-tool user list
-echo " " 
+echo " "
 read -p "From the list, please input the user of whom you want to reset their password: " LOGINNAME
-
 
 samba-tool user setpassword $LOGINNAME
 
 read -p "Press Any Key"
-

@@ -2,31 +2,35 @@
 #Checking for user permissions
 user=$(whoami)
 if [ "$user" != "root" ]; then
-echo ${red}"This program must be run as root ${textreset}"
-echo "Exiting"
-exit
+   echo ${red}"This program must be run as root ${textreset}"
+   echo "Exiting"
+   exit
 else
-echo "Running Program"
+   echo "Running Program"
 fi
 textreset=$(tput sgr0)
 red=$(tput setaf 1)
 yellow=$(tput setaf 3)
 green=$(tput setaf 2)
 
-clear 
+clear
 
-cat <<EOF 
+cat <<EOF
 This will Update ${yellow}all${textreset} packages on the system
 EOF
 while true; do
-read -p "Do you want to proceed? (y/n) " yn
-case $yn in 
-   [yY] ) dnf -y update;
-      break;;
-   [nN] ) echo exiting...;
-      exit;;
-   * ) echo invalid response;;
-esac
+   read -p "Do you want to proceed? (y/n) " yn
+   case $yn in
+   [yY])
+      dnf -y update
+      break
+      ;;
+   [nN])
+      echo exiting...
+      exit
+      ;;
+   *) echo invalid response ;;
+   esac
 done
 
 read -p "Press Any Key"

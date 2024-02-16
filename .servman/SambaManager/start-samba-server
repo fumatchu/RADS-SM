@@ -2,11 +2,11 @@
 #Checking for user permissions
 user=$(whoami)
 if [ "$user" != "root" ]; then
-echo ${red}"This program must be run as root ${textreset}"
-echo "Exiting"
-exit
+    echo ${red}"This program must be run as root ${textreset}"
+    echo "Exiting"
+    exit
 else
-echo "Running Program"
+    echo "Running Program"
 fi
 textreset=$(tput sgr0)
 red=$(tput setaf 1)
@@ -14,21 +14,20 @@ yellow=$(tput setaf 3)
 green=$(tput setaf 2)
 
 clear
-cat  <<EOF
+cat <<EOF
 ${green}Starting Samba${textreset} Service
 EOF
 systemctl start samba
-ps -ax | grep samba | head 
-sleep 1 
+ps -ax | grep samba | head
+sleep 1
 
 cat <<EOF
 Checking Status
 You can press "q" on the next screen to escape 
 EOF
 
-read -p "Press Any Key" 
+read -p "Press Any Key"
 
 systemctl status samba
 
 read -p "Press Any Key"
-

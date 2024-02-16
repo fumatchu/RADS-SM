@@ -2,11 +2,11 @@
 #Checking for user permissions
 user=$(whoami)
 if [ "$user" != "root" ]; then
-echo ${red}"This program must be run as root ${textreset}"
-echo "Exiting"
-exit
+    echo ${red}"This program must be run as root ${textreset}"
+    echo "Exiting"
+    exit
 else
-echo "Running Program"
+    echo "Running Program"
 fi
 textreset=$(tput sgr0)
 red=$(tput setaf 1)
@@ -21,7 +21,7 @@ Please provide the following information to create a new user in Active Director
 EOF
 
 read -p "Please provide the First Name for the User : " FIRSTNAME
-read -p "Please provide the Last Name for the User: " LASTNAME 
+read -p "Please provide the Last Name for the User: " LASTNAME
 read -p "Please provide the Initials for the User: " INITIALS
 read -p "Please provdie the login account name for the user : " LOGINNAME
 
@@ -35,9 +35,8 @@ EOF
 
 samba-tool user add $LOGINNAME --given-name $FIRSTNAME --surname $LASTNAME --initials $INITIALS
 
-echo  ${green}"Current user List${textreset}"
+echo ${green}"Current user List${textreset}"
 echo " "
-samba-tool user list 
-echo " " 
+samba-tool user list
+echo " "
 read -p "Press Any Key"
-

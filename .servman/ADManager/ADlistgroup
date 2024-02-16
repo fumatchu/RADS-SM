@@ -2,11 +2,11 @@
 #Checking for user permissions
 user=$(whoami)
 if [ "$user" != "root" ]; then
-echo ${red}"This program must be run as root ${textreset}"
-echo "Exiting"
-exit
+    echo ${red}"This program must be run as root ${textreset}"
+    echo "Exiting"
+    exit
 else
-echo "Running Program"
+    echo "Running Program"
 fi
 textreset=$(tput sgr0)
 red=$(tput setaf 1)
@@ -19,9 +19,8 @@ cat <<EOF
 List all Groups:
 EOF
 echo " "
-echo  ${green}"Current Group List${textreset}"
+echo ${green}"Current Group List${textreset}"
 echo " "
-samba-tool group list 
-echo " " 
+samba-tool group list
+echo " "
 read -p "Press Any Key"
-

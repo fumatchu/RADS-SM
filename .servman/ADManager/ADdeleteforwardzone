@@ -3,11 +3,11 @@
 SERVER=$(hostname)
 user=$(whoami)
 if [ "$user" != "root" ]; then
-echo ${red}"This program must be run as root ${textreset}"
-echo "Exiting"
-exit
+    echo ${red}"This program must be run as root ${textreset}"
+    echo "Exiting"
+    exit
 else
-echo "Running Program"
+    echo "Running Program"
 fi
 textreset=$(tput sgr0)
 red=$(tput setaf 1)
@@ -22,7 +22,7 @@ ${green}Delete a forward Zone:${textreset}
 EOF
 
 samba-tool dns zonelist $SERVER -U Administrator
- 
+
 read -p ${yellow}"From the list, please input the zone you wish to delete:${textreset} " ZONE
 
 samba-tool dns zonedelete $SERVER $ZONE -UAdministrator

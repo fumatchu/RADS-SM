@@ -2,11 +2,11 @@
 #Checking for user permissions
 user=$(whoami)
 if [ "$user" != "root" ]; then
-echo ${red}"This program must be run as root ${textreset}"
-echo "Exiting"
-exit
+    echo ${red}"This program must be run as root ${textreset}"
+    echo "Exiting"
+    exit
 else
-echo "Running Program"
+    echo "Running Program"
 fi
 textreset=$(tput sgr0)
 red=$(tput setaf 1)
@@ -14,13 +14,12 @@ yellow=$(tput setaf 3)
 green=$(tput setaf 2)
 
 clear
-cat  <<EOF
+cat <<EOF
 DHCP Disable
 EOF
 
 systemctl disable dhcpd
 
-systemctl  --type=service --all | grep dhcpd
+systemctl --type=service --all | grep dhcpd
 
 read -p "Press Any Key"
-
