@@ -12,7 +12,11 @@ fi
 items=(1 "Active Directory Management"
     2 "DHCP Management"
     3 "Samba Service Management"
-    4 "System Management")
+    4 "System Management"
+    5 "Server Management Options"
+    6 "System Tools"
+    7 "Welcome to Server Manager"
+)
 
 while choice=$(dialog --title "$TITLE" \
     --backtitle "Server Management" \
@@ -23,6 +27,9 @@ while choice=$(dialog --title "$TITLE" \
     2) /root/.servman/DHCPMan ;; # some action on 2
     3) /root/.servman/SambaMan ;;
     4) /root/.servman/SYSMan ;; # some action on other
+    5) /root/.servman/SERVMan;;
+    6) /root/.servman/TOOLMan;;
+    7) /root/.servman/welcome.readme | more;;
     esac
 done
 clear # clear after user pressed Cancel
