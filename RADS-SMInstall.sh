@@ -29,6 +29,8 @@ EOF
 
 sleep 20
 dnf -y install dialog nano htop iptraf-ng mc
+rm -r -f /root/.servman
+rm -f /usr/bin/server-manager
 cd /root/RADS-SMInstaller
 mv -v ./.servman /root
 chmod 700 /root/RADS-SMInstaller/server-manager
