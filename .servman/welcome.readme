@@ -1,0 +1,98 @@
+#!/bin/bash
+textreset=$(tput sgr0)
+red=$(tput setaf 1)
+yellow=$(tput setaf 3)
+green=$(tput setaf 2)
+
+clear
+cat <<EOF
+${red}Server Management${textreset}
+
+Welcome to Server Management. This is a dialog based driven GUI menu system backed by smaller scripts
+to help you get things done efficiently.
+Server management is based on scripts designed for the RADS and FR-RADS installs, but also brings
+native menus into the system(ntsysv, htop, etc). You can start Server Management at any time by typing 
+${yellow}server-manager${textreset} from the terminal
+
+
+For a RADS install the following is available:
+
+${green}Active Directory Management Management${textreset}
+
+        -Add User
+                This will allow you to add a new user to Active Directory      
+        -Delete User
+                Provides a scrolling list of users to determine which username you want to delete and prmopts for deletion
+        -Password Reset
+                Provides a scrolling list of users to determine which username you want to select for password reset
+       -List All Users 
+                Provides a Scrolling list of all users on the system  
+        -Create New Group
+                Creates a new Group on the Default Domain
+        -Delete Group
+                Provides a scrolling list of groups and prompts for deletion 
+        -List Group 
+                Provides a scrolling list of groups
+        -Move Users to Group 
+                Provides ascrolling list of users and groups to allow you to add user TO a group 
+        -Remove User from a Group
+                Provides a scrolling list of groups fro user removal 
+
+This is a Preview release, meaning all functionality technically works, but the module is not complete. More additions are coming 
+        -DNS modifications/Zones
+        -OU manipulation
+        -Vizualizations 
+This is not designed to be a replacmeent for RSAT, but as complimentary if on the Terminal 
+        
+${green}Active Directory Management Management${textreset}
+
+        -Create a new DHCP Scope
+                This creates a new DHCP scope based on user input 
+        -List DHCP Leases
+        -Start DHCP Server
+        -Stop DHCP Server
+        -Restart DHCP Service
+        -Enable DHCP Service 
+        -Disable DHCP Service
+        -Provide DHCP Server Status
+        -Edit DHCP Config File, Manually
+
+${green}Samba Management${textreset}
+
+        -Start
+        -Stop
+        -Restart
+        -Samba Server Status
+        -Samba Update Sync log (dnf-smb)
+        -Samba Update (mock build for updated .src packages from Rocky)
+        -Edit Samba Config 
+
+
+${green}System Management${textreset}
+
+        -Check for system updates
+                This will allow you to update the server for the core rpm packages (dnf -y update)
+        -Start/Stop Services on boot
+                This will allow you to enable or disable services on boot (ntsysv)
+        -Show Network Settings
+                Display a static output of the current interface configuration (nmcli)
+        -Reboot the Server
+                reboot the server
+        -Shutdown the Server
+                shutdown the server (power it off)
+
+${green}Server Management Options${textreset}
+        -Enable SM on Boot (will configure SM to load when logging in as root)
+        -Disable SM on Boot (will remove SM from loading upon logging into the server as root)
+        - Update Module will have server-manager go out to GitHub and check for updates to server-manager
+
+${green}System Tools${textreset}
+        -Process Monitor
+                Loads htop for process monitoring
+        -Network Monitor
+                Loads iptraf-ng for traffic flow
+        -File Manager
+                Loads mc for file management
+        -Editor
+                Loads nano
+EOF
