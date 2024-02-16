@@ -1,0 +1,31 @@
+#!/bin/bash
+#Checking for user permissions
+user=$(whoami)
+if [ "$user" != "root" ]; then
+echo ${red}"This program must be run as root ${textreset}"
+echo "Exiting"
+exit
+else
+echo "Running Program"
+fi
+textreset=$(tput sgr0)
+red=$(tput setaf 1)
+yellow=$(tput setaf 3)
+green=$(tput setaf 2)
+
+cat <<EOF
+${yellow}Remove System Management on Boot${textreset}
+You can type ${yellow}server-manager${textreset} from the cli at any time
+EOF
+
+while true; do
+read -p "Do you want to disable SM on Boot? (y/n) " yn
+case $yn in
+   [yY] ) sed -i '/server-manager/d' /root/.bash_profile;
+      break;;
+   [nN] ) echo exiting...;
+      exit;;
+   * ) echo invalid response;;
+esac
+done
+exit
