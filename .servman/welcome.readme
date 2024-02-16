@@ -17,7 +17,7 @@ ${yellow}server-manager${textreset} from the terminal
 
 For a RADS install the following is available:
 
-${green}Active Directory Management Management${textreset}
+${green}Active Directory Management${textreset}
 
         -Add User
                 This will allow you to add a new user to Active Directory      
@@ -44,7 +44,7 @@ This is a Preview release, meaning all functionality technically works, but the 
         -Vizualizations 
 This is not designed to be a replacmeent for RSAT, but as complimentary if on the Terminal 
         
-${green}Active Directory Management Management${textreset}
+${green}DHCP Management${textreset}
 
         -Create a new DHCP Scope
                 This creates a new DHCP scope based on user input 
