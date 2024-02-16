@@ -11,6 +11,7 @@ fi
 
 items=(1 "Enable SM on Boot"
        2 "Disable SM on Boot"
+       3 "Update Module"
 )
 
 while choice=$(dialog --title "$TITLE" \
@@ -21,6 +22,7 @@ while choice=$(dialog --title "$TITLE" \
     case $choice in
         1) /root/.servman/ServerManager/sm-enable;; 
         2) /root/.servman/ServerManager/sm-disable;;
+	3) /root/.servman/ServerManager/update-server-manager;;
     esac
 done
 clear # clear after user pressed Cancel
