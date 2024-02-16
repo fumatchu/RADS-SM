@@ -2,31 +2,34 @@
 user=$(whoami)
 #Checking for user permissions
 if [ "$user" != "root" ]; then
-    echo ${red}"This program must be run as root ${textreset}"
-    echo "Exiting"
-    exit
+echo ${red}"This program must be run as root ${textreset}"
+echo "Exiting"
+exit
 else
-    echo "Running Program"
+echo "Running Program"
 fi
 
 items=(1 "Check for System Updates"
-    2 "Start/Stop Services on Boot"
-    3 "Configure Network"
-    4 "Update Server Management Modules"
-    5 "Reboot the Server"
-    6 "Shutdown the Server")
+       2 "Start/Stop Services on Boot"
+       3 "Configure Network"
+       4 "Update Server Management Modules"
+       5 "Show Network Settings"
+       6 "Reboot the Server"
+       7 "Shutdown the Server")
 
 while choice=$(dialog --title "$TITLE" \
-    --backtitle "System Management" \
-    --menu "Please select" 20 40 3 "${items[@]}" \
-    2>&1 >/dev/tty); do
+		 --backtitle "System Management" \
+                 --menu "Please select" 20 40 3 "${items[@]}" \
+                 2>&1 >/dev/tty)
+    do
     case $choice in
-    1) /root/.servman/SystemManager/dnfupdate ;;
-    2) /root/.servman/SystemManager/start-stop-services ;;
-    3) /root/.servman/SystemManager/configure-network ;;
-    4) /root/.servman/SystemManager/update-server-manager ;;
-    5) /root/.servman/SystemManager/reboot-server ;;
-    6) /root/.servman/SystemManager/shutdown-server ;;
+        1) /root/.servman/SystemManager/dnfupdate;; 
+        2) /root/.servman/SystemManager/start-stop-services;;
+        3) /root/.servman/SystemManager/configure-network ;;
+        4) /root/.servman/SystemManager/update-server-manager;;
+	5) /root/.servman/SystemManager/show-network;;
+        6) /root/.servman/SystemManager/reboot-server;;
+	7) /root/.servman/SystemManager/shutdown-server;;
     esac
 done
 clear # clear after user pressed Cancel
