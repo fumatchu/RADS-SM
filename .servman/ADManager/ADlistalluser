@@ -20,7 +20,7 @@ Listing All Users:
 
 EOF
 
-samba-tool user list
+samba-tool user list | column -c 100
 
 echo " "
 
