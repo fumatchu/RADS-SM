@@ -48,6 +48,8 @@ ${green}DHCP Management${textreset}
 
         -Create a new DHCP Scope
                 This creates a new DHCP scope based on user input 
+        -Query DHCP Database 
+                Search via MAC, IP Address or hostname for Active leases
         -List DHCP Leases
         -Start DHCP Server
         -Stop DHCP Server
