@@ -1,0 +1,33 @@
+#!/bin/bash
+#Checking for user permissions
+user=$(whoami)
+if [ "$user" != "root" ]; then
+   echo ${red}"This program must be run as root ${textreset}"
+   echo "Exiting"
+   exit
+else
+   echo "Running Program"
+fi
+textreset=$(tput sgr0)
+red=$(tput setaf 1)
+yellow=$(tput setaf 3)
+green=$(tput setaf 2)
+maclower=$($MACADDR | sed -e 's/\(.*\)/\L\1/')
+clear
+cat << EOF
+${red}DHCP QUERY${textreset}
+${yellow}Query Entry${textreset}
+
+EOF
+
+read -p "Provide the MAC Address (i.e. 00:b0:d0:63:c2:21), IP address or hostname description to search: " QUERY
+
+echo "Result:"
+
+more /var/lib/dhcpd/dhcpd.leases | grep $QUERY -C12
+cat  << EOF
+
+${red}Note- The Description is UNDER the MAC address Entry${textreset}
+
+EOF
+read -p "Press Any Key to Continue"
