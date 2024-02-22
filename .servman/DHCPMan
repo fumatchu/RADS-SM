@@ -11,13 +11,14 @@ fi
 
 items=(1 "Create new DHCP Scope"
     2 "List DHCP Leases"
-    3 "Start DHCP Server"
-    4 "Stop DHCP Server"
-    5 "Restart DHCP Service"
-    6 "Enable DHCP Server Service"
-    7 "Disable DHCP Service"
-    8 "DHCP Server Status"
-    9 "Edit DHCP Config Manually"
+    3 "Query DHCP Database"
+    4 "Start DHCP Server"
+    5 "Stop DHCP Server"
+    6 "Restart DHCP Service"
+    7 "Enable DHCP Server Service"
+    8 "Disable DHCP Service"
+    9 "DHCP Server Status"
+   10 "Edit DHCP Config Manually"
 )
 
 while choice=$(dialog --title "$TITLE" \
@@ -27,13 +28,14 @@ while choice=$(dialog --title "$TITLE" \
     case $choice in
     1) /root/.servman/DHCPManager/DHCPcreatescope ;;
     2) /root/.servman/DHCPManager/DHCPlist ;;
-    3) /root/.servman/DHCPManager/DHCPstart ;;
-    4) /root/.servman/DHCPManager/DHCPstop ;;
-    5) /root/.servman/DHCPManager/DHCPrestart ;;
-    6) /root/.servman/DHCPManager/DHCPenable ;;
-    7) /root/.servman/DHCPManager/DHCPdisable ;;
-    8) /root/.servman/DHCPManager/DHCPstatus ;;
-    9) /root/.servman/DHCPManager/DHCPeditconfig ;;
+    3)  /root/.servman/DHCPManager/dhcp-query ;;
+    4) /root/.servman/DHCPManager/DHCPstart ;;
+    5) /root/.servman/DHCPManager/DHCPstop ;;
+    6) /root/.servman/DHCPManager/DHCPrestart ;;
+    7) /root/.servman/DHCPManager/DHCPenable ;;
+    8) /root/.servman/DHCPManager/DHCPdisable ;;
+    9) /root/.servman/DHCPManager/DHCPstatus ;;
+   10) /root/.servman/DHCPManager/DHCPeditconfig ;;
     esac
 done
 clear # clear after user pressed Cancel
