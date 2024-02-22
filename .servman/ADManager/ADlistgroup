@@ -21,6 +21,6 @@ EOF
 echo " "
 echo ${green}"Current Group List${textreset}"
 echo " "
-samba-tool group list
+samba-tool group list | column -c 100
 echo " "
 read -p "Press Any Key"
