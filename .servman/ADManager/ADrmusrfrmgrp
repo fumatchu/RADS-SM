@@ -20,13 +20,13 @@ Move User to AD Group:
 ${yellow}Please provide the following information to remove a user from group in Active Directory${textreset}
 EOF
 
-samba-tool group list
+samba-tool group list | column -c 100
 read -p "Please provide the Name of the group to use : " GROUPNAME
 read -p ${yellow}"Press Any Key"${textreset}
 
 clear
 
-samba-tool user list
+samba-tool user list | column -c 100
 
 read -p "Please provide the user you want to remove from the group: " ADUSER
 
