@@ -17,7 +17,7 @@ else
   echo "Exiting"
 fi
 #Checking for version Information
-if [ "$MAJOROS" = "9" ]; then
+if [ "$MAJOROS" != "9" ]; then
 echo " "
 else
   echo ${RED}"Sorry, but this installer only works on Rocky 9.X ${TEXTRESET}"
