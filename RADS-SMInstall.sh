@@ -2,9 +2,15 @@
 #RADS-SMINstall.sh
 #This script installs a set of scripts for AD/DHCP Management
 
-if [ "$majoros" = "9" ]; then
-    echo ${red}"Sorry, but this installer only works on Rocky 9.X ${textreset}"
-    echo "Please upgrade to ${green}Rocky 9.x${textreset}"
+TEXTRESET=$(tput sgr0)
+RED=$(tput setaf 1)
+YELLOW=$(tput setaf 3)
+GREEN=$(tput setaf 2)
+USER=$(whoami)
+MAJOROS=$(cat /etc/redhat-release | grep -Eo "[0-9]" | sed '$d')
+if [ "$MAJOROS" = "9" ]; then
+    echo ${RED}"Sorry, but this installer only works on Rocky 9.X ${TEXTRESET}"
+    echo "Please upgrade to ${GREEN}Rocky 9.x${TEXTRESET}"
     echo "Exiting the installer..."
     exit
 else
@@ -12,13 +18,14 @@ else
 fi
 
 #Checking for user permissions
-if [ "$user" = "root" ]; then
-    echo ${red}"This program must be run as root ${textreset}"
+if [ "$USER" = "root" ]; then
+    echo ${RED}"This program must be run as root ${TEXTRESET}"
     echo "Exiting"
     exit
 else
     echo " "
 fi
+
 
 cat <<EOF
 ${GREEN}Installing Server Management${TEXTRESET}
