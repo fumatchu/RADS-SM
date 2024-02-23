@@ -43,4 +43,5 @@ echo "/usr/bin/server-manager" >>/root/.bash_profile
 
 rm -r -f /root/RADS-SMInstaller
 rm -r -f /root/RADS-SMInstaller.sh
+pkill dialog 
 /usr/bin/server-manager
