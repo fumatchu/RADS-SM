@@ -27,7 +27,7 @@ and DHCP Management
 The installer will continue shortly
 EOF
 
-sleep 20
+sleep 10
 dnf -y install dialog nano htop iptraf-ng mc
 rm -r -f /root/.servman
 rm -f /usr/bin/server-manager
