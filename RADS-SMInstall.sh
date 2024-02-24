@@ -27,27 +27,6 @@ else
 fi
 
 cat <<EOF
-${GREEN}**************************
-Please wait while we gather some files
-**************************${TEXTRESET}
-
-
-${YELLOW}Installing wget and git${TEXTRESET}
-EOF
-sleep 1
-
-dnf -y install wget git
-
-cat <<EOF
-${YELLOW}*****************************
-Retrieving Files from GitHub
-*****************************${TEXTRESET}
-EOF
-
-sleep 1
-
-
-cat <<EOF
 ${GREEN}Installing Server Management${TEXTRESET}
 This Installer will provide a set of scripts wrapped in a dialog GUI
 you will be able to manage components of AD, DHCP and services with it
