@@ -15,7 +15,7 @@ items=(1 "Enable SM on Boot"
 )
 
 while choice=$(dialog --title "$TITLE" \
-		 --backtitle "System Management" \
+		 --backtitle "Server Management Options" \
                  --menu "Please select" 20 40 3 "${items[@]}" \
                  2>&1 >/dev/tty)
     do
