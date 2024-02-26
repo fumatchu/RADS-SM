@@ -1,0 +1,25 @@
+#!/bin/bash
+TEXTRESET=$(tput sgr0)
+RED=$(tput setaf 1)
+YELLOW=$(tput setaf 3)
+GREEN=$(tput setaf 2)
+USER=$(whoami)
+
+#Checking for user permissions
+if [ "$USER" = "root" ]; then
+echo " "
+else
+  echo ${RED}"This program must be run as root ${TEXTRESET}"
+  echo "Exiting"
+fi
+clear
+cat << EOF
+${GREEN}Active Directory Management${TEXTRESET}
+${GREEN}Add User${TEXTRESET}
+EOF
+read -p "Please provide the first name of the user: " FIRST
+read -p "Please provide the last name of the user: " LAST
+read -p "Please provide the initials of the user: " INITIALS
+read -p "Please provide the login name for account creation: " LOGIN
+
+samba-tool user add ${LOGIN} --given-name ${FIRST} --surname ${LAST} --initials ${INITIALS}
