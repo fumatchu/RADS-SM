@@ -15,7 +15,7 @@ fi
 clear
 cat << EOF
 ${GREEN}Active Directory Management${TEXTRESET}
-${GREEN}Add User${TEXTRESET}
+${GREEN}Remove User From group${TEXTRESET}
 EOF
 
 samba-tool group list | column -c 100
