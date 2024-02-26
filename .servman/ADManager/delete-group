@@ -1,23 +1,21 @@
 #!/bin/bash
+TEXTRESET=$(tput sgr0)
+RED=$(tput setaf 1)
+YELLOW=$(tput setaf 3)
+GREEN=$(tput setaf 2)
+USER=$(whoami)
+
 #Checking for user permissions
-user=$(whoami)
-if [ "$user" != "root" ]; then
-    echo ${red}"This program must be run as root ${textreset}"
-    echo "Exiting"
-    exit
+if [ "$USER" = "root" ]; then
+echo " "
 else
-    echo "Running Program"
+  echo ${RED}"This program must be run as root ${TEXTRESET}"
+  echo "Exiting"
 fi
-textreset=$(tput sgr0)
-red=$(tput setaf 1)
-yellow=$(tput setaf 3)
-green=$(tput setaf 2)
-
 clear
-
-cat <<EOF
-Delete An AD Group:
-Please provide the following information to delete a group in Active Directory
+cat << EOF
+${GREEN}Active Directory Management${TEXTRESET}
+${GREEN}Delete a Group ${TEXTRESET}
 EOF
 samba-tool group list
 read -p "Please provide the Name of the group to delete : " GROUPNAME
