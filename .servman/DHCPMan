@@ -35,7 +35,7 @@ while choice=$(dialog --title "$TITLE" \
     7) /root/.servman/DHCPManager/enable-dhcp-server ;;
     8) /root/.servman/DHCPManager/disable-dhcp-server ;;
     9) /root/.servman/DHCPManager/status-dhcp-server ;;
-   10) /root/.servman/DHCPManager/dchp-edit-config ;;
+   10) /root/.servman/DHCPManager/dhcp-edit-config ;;
     esac
 done
 clear # clear after user pressed Cancel
