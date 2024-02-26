@@ -1,33 +1,26 @@
 #!/bin/bash
+TEXTRESET=$(tput sgr0)
+RED=$(tput setaf 1)
+YELLOW=$(tput setaf 3)
+GREEN=$(tput setaf 2)
+USER=$(whoami)
+
 #Checking for user permissions
-user=$(whoami)
-if [ "$user" != "root" ]; then
-    echo ${red}"This program must be run as root ${textreset}"
-    echo "Exiting"
-    exit
+if [ "$USER" = "root" ]; then
+echo " "
 else
-    echo "Running Program"
+  echo ${RED}"This program must be run as root ${TEXTRESET}"
+  echo "Exiting"
 fi
-textreset=$(tput sgr0)
-red=$(tput setaf 1)
-yellow=$(tput setaf 3)
-green=$(tput setaf 2)
-
 clear
-cat <<EOF
-${green}Restarting Samba${textreset} Service
+cat << EOF
+${GREEN}Samba Server Management${TEXTRESET}
+${GREEN}Restart Samba Server${TEXTRESET}
 EOF
+
+
 systemctl restart samba
-ps -ax | grep samba | head
-sleep 1
 
-cat <<EOF
-Checking Status
-You can press "q" on the next screen to escape 
-EOF
-
+echo ${YELLOW}"*To exit the Next Screen press the "q" key${TEXTRESET}"
 read -p "Press Any Key"
-
 systemctl status samba
-
-read -p "Press Any Key"
