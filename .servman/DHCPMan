@@ -26,16 +26,16 @@ while choice=$(dialog --title "$TITLE" \
     --menu "Please select" 20 40 3 "${items[@]}" \
     2>&1 >/dev/tty); do
     case $choice in
-    1) /root/.servman/DHCPManager/DHCPcreatescope ;;
-    2) /root/.servman/DHCPManager/DHCPlist ;;
+      1) /root/.servman/DHCPManager/create-scope ;;
+    2) /root/.servman/DHCPManager/dhcp-list ;;
     3)  /root/.servman/DHCPManager/dhcp-query ;;
-    4) /root/.servman/DHCPManager/DHCPstart ;;
-    5) /root/.servman/DHCPManager/DHCPstop ;;
-    6) /root/.servman/DHCPManager/DHCPrestart ;;
-    7) /root/.servman/DHCPManager/DHCPenable ;;
-    8) /root/.servman/DHCPManager/DHCPdisable ;;
-    9) /root/.servman/DHCPManager/DHCPstatus ;;
-   10) /root/.servman/DHCPManager/DHCPeditconfig ;;
+    4) /root/.servman/DHCPManager/start-dhcp-server ;;
+    5) /root/.servman/DHCPManager/stop-dhcp-server ;;
+    6) /root/.servman/DHCPManager/restart-dhcp-server ;;
+    7) /root/.servman/DHCPManager/enable-dhcp-server ;;
+    8) /root/.servman/DHCPManager/disable-dhcp-server ;;
+    9) /root/.servman/DHCPManager/status-dhcp-server ;;
+   10) /root/.servman/DHCPManager/dchp-edit-config ;;
     esac
 done
 clear # clear after user pressed Cancel
