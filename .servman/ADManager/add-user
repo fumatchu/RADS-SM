@@ -23,3 +23,7 @@ read -p "Please provide the initials of the user: " INITIALS
 read -p "Please provide the login name for account creation: " LOGIN
 
 samba-tool user add ${LOGIN} --given-name ${FIRST} --surname ${LAST} --initials ${INITIALS}
+
+samba-tool user list | column -c 100
+
+read -p "Press Any Key"
