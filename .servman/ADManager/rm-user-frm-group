@@ -35,6 +35,7 @@ samba-tool group removemembers "$GROUPNAME" "$ADUSER"
 
 echo " "
 echo ${GREEN}"This is the users updated Group Membership:${TEXTRESET}"
-samba-tool user show $ADUSER | grep memberOf:
-echo ${GREEN}"This is the Groups Members${TEXTRESET}"
-samba-tool group show "$GROUPNAME"
+samba-tool group listmembers ${GROUPNAME}
+
+read -p "Press Any Key"
+
