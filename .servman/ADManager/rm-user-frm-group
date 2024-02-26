@@ -20,10 +20,13 @@ EOF
 
 samba-tool group list | column -c 100
 read -p "Please provide the Name of the group to use : " GROUPNAME
-read -p "Press Any Key"
+
 
 clear
-echo "${GREEN}Current Group Members${TEXTRESET}
+cat << EOF
+${GREEN}Current Group Members${TEXTRESET}
+
+EOF
 samba-tool group listmembers ${GROUPNAME}
 
 read -p "Please provide the user you want to remove from the group: " ADUSER
