@@ -1,5 +1,0 @@
-#!/bin/bash
-
-echo "After you edit this config file, you must restart the DHCP server Service"
-
-nano /etc/dhcp/dhcpd.conf
