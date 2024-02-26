@@ -17,13 +17,13 @@ cat << EOF
 ${GREEN}Active Directory Management${TEXTRESET}
 ${GREEN}Delete a Group ${TEXTRESET}
 EOF
-samba-tool group list
+samba-tool group list | column -c 100
 read -p "Please provide the Name of the group to delete : " GROUPNAME
 
 samba-tool group delete "$GROUPNAME"
 
 echo ${green}"Current Group List${textreset}"
 echo " "
-samba-tool group list
+samba-tool group list | column -c 100
 echo " "
 read -p "Press Any Key"
