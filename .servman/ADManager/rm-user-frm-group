@@ -1,4 +1,4 @@
-#!/bin/bash
+o#!/bin/bash
 TEXTRESET=$(tput sgr0)
 RED=$(tput setaf 1)
 YELLOW=$(tput setaf 3)
@@ -23,7 +23,7 @@ read -p "Please provide the Name of the group to use : " GROUPNAME
 read -p "Press Any Key"
 
 clear
-
+echo "${GREEN}Current Group Members${TEXTRESET}
 samba-tool group listmembers ${GROUPNAME}
 
 read -p "Please provide the user you want to remove from the group: " ADUSER
