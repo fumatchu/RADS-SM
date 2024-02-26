@@ -31,5 +31,6 @@ Checking Status
 EOF
 
 systemctl status dhcpd
+sleep 3
 
 
