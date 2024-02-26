@@ -17,8 +17,9 @@ cat << EOF
 ${GREEN}Active Directory Management${TEXTRESET}
 ${GREEN}List All Groups${TEXTRESET}
 
-echo ${GREEN} Current Group List${TEXTRESET}
-
-samba-tool group list | column -c 100
 EOF
+echo ${GREEN} Current Group List${TEXTRESET}
+echo " "
+samba-tool group list | column -c 100
+echo " " 
 read -p "Press Any Key"
