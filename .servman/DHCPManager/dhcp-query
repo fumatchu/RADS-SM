@@ -25,7 +25,7 @@ echo "Result:"
 more /var/lib/dhcpd/dhcpd.leases | grep $QUERY -C12
 cat  << EOF
 
-${red}Note- The Description is UNDER the MAC address Entry${textreset}
+${RED}Note- The Description is UNDER the MAC address Entry${TEXTRESET}
 
 EOF
 read -p "Press Any Key to Continue"
