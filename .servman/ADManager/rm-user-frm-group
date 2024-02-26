@@ -34,8 +34,8 @@ read -p "Please provide the user you want to remove from the group: " ADUSER
 samba-tool group removemembers "$GROUPNAME" "$ADUSER"
 
 echo " "
-echo ${GREEN}"This is the users updated Group Membership:${TEXTRESET}"
+echo ${GREEN}"This is the updated members of this Group:${TEXTRESET}"
 samba-tool group listmembers ${GROUPNAME}
-
+echo " "
 read -p "Press Any Key"
 
