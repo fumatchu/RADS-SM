@@ -1,26 +1,25 @@
 #!/bin/bash
+#AD Passowrd Reset
+TEXTRESET=$(tput sgr0)
+RED=$(tput setaf 1)
+YELLOW=$(tput setaf 3)
+GREEN=$(tput setaf 2)
+USER=$(whoami)
+
 #Checking for user permissions
-user=$(whoami)
-if [ "$user" != "root" ]; then
-    echo ${red}"This program must be run as root ${textreset}"
-    echo "Exiting"
-    exit
+if [ "$USER" = "root" ]; then
+echo " "
 else
-    echo "Running Program"
+  echo ${RED}"This program must be run as root ${TEXTRESET}"
+  echo "Exiting"
 fi
-textreset=$(tput sgr0)
-red=$(tput setaf 1)
-yellow=$(tput setaf 3)
-green=$(tput setaf 2)
-
 clear
-
-cat <<EOF
-Reset the User Password:
+cat << EOF
+${GREEN}Active Directory Management${TEXTRESET}
+${GREEN}User Password Reset${TEXTRESET}
 
 EOF
 
-echo " "
 samba-tool user list
 echo " "
 read -p "From the list, please input the user of whom you want to reset their password: " LOGINNAME
