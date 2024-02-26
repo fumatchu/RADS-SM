@@ -24,6 +24,6 @@ samba-tool group add "$GROUPNAME"
 
 echo ${GREEN}"Current Group List${TEXTRESET}"
 echo " "
-samba-tool group list
+samba-tool group list | column -c 100
 echo " "
 read -p "Press Any Key"
