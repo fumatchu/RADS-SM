@@ -25,15 +25,15 @@ while choice=$(dialog --title "$TITLE" \
     --menu "Please select" 25 40 3 "${items[@]}" \
     2>&1 >/dev/tty); do
     case $choice in
-    1) /root/.servman/ADManager/ADadduser ;;
-    2) /root/.servman/ADManager/ADdeluser ;;
-    3) /root/.servman/ADManager/ADpassreset ;;
-    4) /root/.servman/ADManager/ADlistalluser ;;
-    5) /root/.servman/ADManager/ADcreatenewgroup ;;
-    6) /root/.servman/ADManager/ADdeletegroup ;;
-    7) /root/.servman/ADManager/ADlistgroup ;;
-    8) /root/.servman/ADManager/ADmoveusertogroup ;;
-    9) /root/.servman/ADManager/ADrmusrfrmgrp ;;
+    1) /root/.servman/ADManager/add-user ;;
+    2) /root/.servman/ADManager/del-user ;;
+    3) /root/.servman/ADManager/pass-reset ;;
+    4) /root/.servman/ADManager/list-all-users ;;
+    5) /root/.servman/ADManager/create-new-group ;;
+    6) /root/.servman/ADManager/delete-group ;;
+    7) /root/.servman/ADManager/list-group ;;
+    8) /root/.servman/ADManager/mv-user-to-group ;;
+    9) /root/.servman/ADManager/rm-user-frm-group ;;
 
     esac
 done
