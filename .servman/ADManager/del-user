@@ -25,9 +25,11 @@ echo " "
 read -p "From the list, please provide the account you want to delete : " LOGINNAME
 
 samba-tool user delete $LOGINNAME
+cat <<EOF
 
-echo "Current user List"
+Current user List
 
+EOF
 samba-tool user list
 
 read -p "Press Any Key"
