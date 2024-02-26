@@ -16,9 +16,9 @@ clear
 cat << EOF
 ${GREEN}Active Directory Management${TEXTRESET}
 ${GREEN}Create Forward Zone${TEXTRESET}
-EOF
 
-echo " "
+
+EOF
 read -p "Please provide the name (i.e. newzone.int) for the new forward Zone: " ZONE
 
 samba-tool dns zonecreate $SERVER $ZONE -UAdministrator
@@ -27,6 +27,6 @@ read -p ${yellow}"Press Any Key${textreset}"
 
 clear
 
-echo "Here is the updated Zone information:"
+echo "Updated Zone information:"
 
 samba-tool dns zonelist $SERVER -U Administrator
