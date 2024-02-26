@@ -1,39 +1,37 @@
 #!/bin/bash
+TEXTRESET=$(tput sgr0)
+RED=$(tput setaf 1)
+YELLOW=$(tput setaf 3)
+GREEN=$(tput setaf 2)
+USER=$(whoami)
+
 #Checking for user permissions
-user=$(whoami)
-if [ "$user" != "root" ]; then
-    echo ${red}"This program must be run as root ${textreset}"
-    echo "Exiting"
-    exit
+if [ "$USER" = "root" ]; then
+echo " "
 else
-    echo "Running Program"
+  echo ${RED}"This program must be run as root ${TEXTRESET}"
+  echo "Exiting"
 fi
-textreset=$(tput sgr0)
-red=$(tput setaf 1)
-yellow=$(tput setaf 3)
-green=$(tput setaf 2)
-
 clear
-
-cat <<EOF
-Move User to AD Group:
-${yellow}Please provide the following information to remove a user from group in Active Directory${textreset}
+cat << EOF
+${GREEN}Active Directory Management${TEXTRESET}
+${GREEN}Add User${TEXTRESET}
 EOF
 
 samba-tool group list | column -c 100
 read -p "Please provide the Name of the group to use : " GROUPNAME
-read -p ${yellow}"Press Any Key"${textreset}
+read -p "Press Any Key"
 
 clear
 
-samba-tool user list | column -c 100
+samba-tool group listmembers ${GROUPNAME}
 
 read -p "Please provide the user you want to remove from the group: " ADUSER
 
 samba-tool group removemembers "$GROUPNAME" "$ADUSER"
 
 echo " "
-echo ${yellow}"This is the users updated Group Membership:${textreset}"
+echo ${GREEN}"This is the users updated Group Membership:${TEXTRESET}"
 samba-tool user show $ADUSER | grep memberOf:
-echo ${yellow}"This is the Groups Members${textreset}"
+echo ${GREEN}"This is the Groups Members${TEXTRESET}"
 samba-tool group show "$GROUPNAME"
