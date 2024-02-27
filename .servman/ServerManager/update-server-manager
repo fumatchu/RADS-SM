@@ -7,13 +7,13 @@ USER=$(whoami)
 
 #Checking for user permissions
 if [ "$USER" = "root" ]; then
-echo " "
+  echo " "
 else
   echo ${RED}"This program must be run as root ${TEXTRESET}"
   echo "Exiting"
 fi
 clear
-cat << EOF
+cat <<EOF
 ${GREEN}Server Management${TEXTRESET}
 ${GREEN}Update Server Management${TEXTRESET}
 
@@ -22,27 +22,27 @@ This will download and install the latest version of Server Management from Gith
 EOF
 
 while true; do
-   read -p "Would you like to update now? (y/n) " yn
-   case $yn in
-   [yY])
-     echo ${GREEN}"Downloading and installing the latest version of Server Management${TEXTRESET}"
-     sed -i '/server-manager/d' /root/.bash_profile
-     cd /root/
-     dnf -y install wget
-     wget https://raw.githubusercontent.com/fumatchu/RADS-SM/main/RADS-SMInstaller.sh
-     chmod 700 ./RADS-SMInstaller.sh
-     /root/RADS-SMInstaller.sh
+  read -p "Would you like to update now? (y/n) " yn
+  case $yn in
+  [yY])
+    echo ${GREEN}"Downloading and installing the latest version of Server Management${TEXTRESET}"
+    sed -i '/server-manager/d' /root/.bash_profile
+    cd /root/
+    dnf -y install wget
+    wget https://raw.githubusercontent.com/fumatchu/RADS-SM/main/RADS-SMInstaller.sh
+    chmod 700 ./RADS-SMInstaller.sh
+    /root/RADS-SMInstaller.sh
     killall -9 server-manager
     killall -9 dialog
     server-manager
     exit
-      break
-      ;;
-   [nN])
-      echo ${RED}"Cancelling update${TEXTRESET}"
-        sleep 1
-      exit
-      ;;
-   *) echo invalid response ;;
-   esac
+    break
+    ;;
+  [nN])
+    echo ${RED}"Cancelling update${TEXTRESET}"
+    sleep 1
+    exit
+    ;;
+  *) echo invalid response ;;
+  esac
 done

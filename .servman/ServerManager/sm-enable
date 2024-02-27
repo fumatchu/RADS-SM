@@ -7,29 +7,32 @@ USER=$(whoami)
 
 #Checking for user permissions
 if [ "$USER" = "root" ]; then
-echo " "
+   echo " "
 else
-  echo ${RED}"This program must be run as root ${TEXTRESET}"
-  echo "Exiting"
+   echo ${RED}"This program must be run as root ${TEXTRESET}"
+   echo "Exiting"
 fi
 clear
-cat << EOF
+cat <<EOF
 ${GREEN}Server Management${TEXTRESET}
 ${GREEN}Server Management On-Boot${TEXTRESET}
 EOF
 
-
 while true; do
-read -p "Do you want to enable System Management GUI Automatically? (y/n) " yn
-case $yn in
-   [yY] ) echo "/usr/bin/server-manager" >> /root/.bash_profile;
-          echo ${GREEN}"Added${TEXTRESET}";
-          sleep 1;
-       break;;
-   [nN] ) echo ${RED}"Cancelled${TEXTRESET}";
-          sleep 1;
-          exit;;
-   * ) echo invalid response;;
-esac
+   read -p "Do you want to enable System Management GUI Automatically? (y/n) " yn
+   case $yn in
+   [yY])
+      echo "/usr/bin/server-manager" >>/root/.bash_profile
+      echo ${GREEN}"Added${TEXTRESET}"
+      sleep 1
+      break
+      ;;
+   [nN])
+      echo ${RED}"Cancelled${TEXTRESET}"
+      sleep 1
+      exit
+      ;;
+   *) echo invalid response ;;
+   esac
 done
 exit
