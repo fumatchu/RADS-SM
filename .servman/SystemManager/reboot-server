@@ -1,32 +1,37 @@
 #!/bin/bash
-#Checking for user permissions
-user=$(whoami)
-if [ "$user" != "root" ]; then
-   echo ${red}"This program must be run as root ${textreset}"
-   echo "Exiting"
-   exit
-else
-   echo "Running Program"
-fi
-textreset=$(tput sgr0)
-red=$(tput setaf 1)
-yellow=$(tput setaf 3)
-green=$(tput setaf 2)
+TEXTRESET=$(tput sgr0)
+RED=$(tput setaf 1)
+YELLOW=$(tput setaf 3)
+GREEN=$(tput setaf 2)
+USER=$(whoami)
 
+#Checking for user permissions
+if [ "$USER" = "root" ]; then
+echo " "
+else
+  echo ${RED}"This program must be run as root ${TEXTRESET}"
+  echo "Exiting"
+fi
 clear
+cat << EOF
+${GREEN}System Management${TEXTRESET}
+${GREEN}Reboot Server${TEXTRESET}
+EOF
 
 cat <<EOF
-This will ${red}REBOOT${textreset} the system now
+This will ${RED}REBOOT${TEXTESET} the system now
 EOF
 while true; do
    read -p "Do you want to proceed? (y/n) " yn
    case $yn in
    [yY])
+      echo ${RED}"Rebooting Now${TEXTRESET}"
+      sleep 1
       reboot
       break
       ;;
    [nN])
-      echo exiting...
+      echo ${RED}"Cancelled${TEXTRESET}"
       exit
       ;;
    *) echo invalid response ;;
