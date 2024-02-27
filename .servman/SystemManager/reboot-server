@@ -30,7 +30,7 @@ while true; do
       break
       ;;
    [nN])
-      echo echo ${RED}"Cancelled${TEXTRESET}"
+      echo ${RED}"Cancelled${TEXTRESET}"
       exit
       ;;
    *) echo invalid response ;;
