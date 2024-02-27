@@ -32,6 +32,10 @@ while true; do
      wget https://raw.githubusercontent.com/fumatchu/RADS-SM/main/RADS-SMInstaller.sh
      chmod 700 ./RADS-SMInstaller.sh
      /root/RADS-SMInstaller.sh
+    killall -9 server-manager
+    killall -9 dialog
+    server-manager
+    exit
       break
       ;;
    [nN])
