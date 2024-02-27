@@ -1,30 +1,34 @@
 #!/bin/bash
+TEXTRESET=$(tput sgr0)
+RED=$(tput setaf 1)
+YELLOW=$(tput setaf 3)
+GREEN=$(tput setaf 2)
+USER=$(whoami)
+
 #Checking for user permissions
-user=$(whoami)
-if [ "$user" != "root" ]; then
-echo ${red}"This program must be run as root ${textreset}"
-echo "Exiting"
-exit
+if [ "$USER" = "root" ]; then
+echo " "
 else
-echo "Running Program"
+  echo ${RED}"This program must be run as root ${TEXTRESET}"
+  echo "Exiting"
 fi
-textreset=$(tput sgr0)
-red=$(tput setaf 1)
-yellow=$(tput setaf 3)
-green=$(tput setaf 2)
-
-cat <<EOF
-${yellow}System Management on Boot${textreset}
-
+clear
+cat << EOF
+${GREEN}Server Management${TEXTRESET}
+${GREEN}Server Management On-Boot${TEXTRESET}
 EOF
 
+
 while true; do
-read -p "Do you want to enable SM on Boot? (y/n) " yn
+read -p "Do you want to enable System Management GUI Automatically? (y/n) " yn
 case $yn in
    [yY] ) echo "/usr/bin/server-manager" >> /root/.bash_profile;
-      break;;
-   [nN] ) echo exiting...;
-      exit;;
+          echo ${GREEN}"Added${TEXTRESET}";
+          sleep 1;
+       break;;
+   [nN] ) echo ${RED}"Cancelled${TEXTRESET}";
+          sleep 1;
+          exit;;
    * ) echo invalid response;;
 esac
 done
