@@ -7,13 +7,13 @@ USER=$(whoami)
 
 #Checking for user permissions
 if [ "$USER" = "root" ]; then
-echo " "
+  echo " "
 else
   echo ${RED}"This program must be run as root ${TEXTRESET}"
   echo "Exiting"
 fi
 clear
-cat << EOF
+cat <<EOF
 ${GREEN}Samba Service Management${TEXTRESET}
 ${GREEN}Start Samba Service${TEXTRESET}
 EOF

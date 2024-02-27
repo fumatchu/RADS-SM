@@ -13,13 +13,13 @@ minoros=$(cat /etc/redhat-release | grep -Eo "[0-9]" | sed '1d')
 
 #Checking for user permissions
 if [ "$USER" = "root" ]; then
-echo " "
+   echo " "
 else
-  echo ${RED}"This program must be run as root ${TEXTRESET}"
-  echo "Exiting"
+   echo ${RED}"This program must be run as root ${TEXTRESET}"
+   echo "Exiting"
 fi
 clear
-cat << EOF
+cat <<EOF
 ${GREEN}Samba Server Management${TEXTRESET}
 ${GREEN}Samba Mock Update${TEXTRESET}
 EOF

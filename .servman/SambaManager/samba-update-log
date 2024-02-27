@@ -7,17 +7,16 @@ USER=$(whoami)
 
 #Checking for user permissions
 if [ "$USER" = "root" ]; then
-echo " "
+  echo " "
 else
   echo ${RED}"This program must be run as root ${TEXTRESET}"
   echo "Exiting"
 fi
 clear
-cat << EOF
+cat <<EOF
 ${GREEN}Samba Server Management${TEXTRESET}
 ${GREEN}Samba Service DNF Update Log${TEXTRESET}
 EOF
-
 
 more /var/log/dnf-smb-mon.log
 
