@@ -1,34 +1,37 @@
 #!/bin/bash
-#samba-dnf-pkg-update
-user=$(whoami)
-#Checking for user permissions
-if [ "$user" != "root" ]; then
-   echo ${red}"This program must be run as root ${textreset}"
-   echo "Exiting"
-   exit
-else
-   echo "Running Program"
-fi
-textreset=$(tput sgr0)
-red=$(tput setaf 1)
-yellow=$(tput setaf 3)
-green=$(tput setaf 2)
-clear
-cat <<EOF
-This script will update your Samba binary packages to the latest version as prescribed from the upstream Rocky Provider
-It's suggested that you schedule downtime for this as the sources will need to rebuild
-It's suggested that you ${yellow}REBOOT${textreset} after the update
-
-Keep in mind you SHOULD NOT be running this command unless you receieved a notification when you logged 
-in that there was a change in .scr.rpm. OR you saw in the Samba dnf replication logs that repositories were NOT in sync
-EOF
-
+TEXTRESET=$(tput sgr0)
+RED=$(tput setaf 1)
+YELLOW=$(tput setaf 3)
+GREEN=$(tput setaf 2)
+USER=$(whoami)
 #In the event a samba update arrives from Rocky Linux, rebuild Samba packages
 dnflocal=$(dnf provides samba | grep Provide | sed 's/.dc//' | sed '1d')
 dnfremote=$(dnf provides samba | grep Provide | sed 's/.dc//' | sed '$d')
 mocksmbver=$(dnf provides samba | grep samba | sed '2,4d' | cut -d: -f1 | cut -dx -f1)
 majoros=$(cat /etc/redhat-release | grep -Eo "[0-9]" | sed '$d')
 minoros=$(cat /etc/redhat-release | grep -Eo "[0-9]" | sed '1d')
+
+#Checking for user permissions
+if [ "$USER" = "root" ]; then
+echo " "
+else
+  echo ${RED}"This program must be run as root ${TEXTRESET}"
+  echo "Exiting"
+fi
+clear
+cat << EOF
+${GREEN}Samba Server Management${TEXTRESET}
+${GREEN}Samba Mock Update${TEXTRESET}
+EOF
+clear
+cat <<EOF
+This script will update your Samba binary packages to the latest version as prescribed from the upstream Rocky Provider
+It's suggested that you schedule downtime for this as the sources will need to rebuild
+It's suggested that you ${YELLOW}REBOOT${TEXTRESET} after the update
+
+Keep in mind you SHOULD NOT be running this command unless you receieved a notification when you logged
+in that there was a change in .scr.rpm. OR you saw in the Samba dnf replication logs that repositories were NOT in sync
+EOF
 
 cat <<EOF
 This Utility is going to update your compiled Samba version to a newer version
@@ -38,10 +41,10 @@ $dnflocal
 
 And the Version in the upstream repository is:
 $dnfremote
- 
+
 EOF
 
-echo ${yellow}"The Last log entry for the Smaba replication log is:${textreset}"
+echo ${YELLOW}"The Last log entry for the Smaba replication log is:${TEXTRESET}"
 tail -1 /var/log/dnf-smb-mon.log
 echo " "
 
@@ -72,7 +75,8 @@ while true; do
       break
       ;;
    [nN])
-      echo exiting...
+      echo ${RED}"Upgrade Cancelled${TEXTRESET}"
+      sleep 1
       exit
       ;;
    *) echo invalid response ;;
