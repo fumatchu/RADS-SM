@@ -22,10 +22,10 @@ This will download and install the latest version of Server Management from Gith
 EOF
 
 while true; do
-   read -p "Do you want to proceed? (y/n) " yn
+   read -p "Would you like to update now? (y/n) " yn
    case $yn in
    [yY])
-     ${GREEN}Downloading and installing th latest version of Server Management${TEXTRESET}
+     echo ${GREEN}"Downloading and installing the latest version of Server Management${TEXTRESET}"
      sed -i '/server-manager/d' /root/.bash_profile
      cd /root/
      dnf -y install wget
