@@ -1,6 +1,44 @@
+#!/bin/bash
+TEXTRESET=$(tput sgr0)
+RED=$(tput setaf 1)
+YELLOW=$(tput setaf 3)
+GREEN=$(tput setaf 2)
+USER=$(whoami)
+
+#Checking for user permissions
+if [ "$USER" = "root" ]; then
+echo " "
+else
+  echo ${RED}"This program must be run as root ${TEXTRESET}"
+  echo "Exiting"
+fi
 clear
-cd /root/
-dnf -y install wget
-wget https://raw.githubusercontent.com/fumatchu/RADS-SM/main/RADS-SMInstaller.sh
-chmod 700 ./RADS-SMInstaller.sh
-/root/RADS-SMInstaller.sh
+cat << EOF
+${GREEN}Server Management${TEXTRESET}
+${GREEN}Update Server Management${TEXTRESET}
+
+This will download and install the latest version of Server Management from Github
+
+EOF
+
+while true; do
+   read -p "Do you want to proceed? (y/n) " yn
+   case $yn in
+   [yY])
+     ${GREEN}Downloading and installing th latest version of Server Management${TEXTRESET}
+     sed -i '/server-manager/d' /root/.bash_profile
+     cd /root/
+     dnf -y install wget
+     wget https://raw.githubusercontent.com/fumatchu/RADS-SM/main/RADS-SMInstaller.sh
+     chmod 700 ./RADS-SMInstaller.sh
+     /root/RADS-SMInstaller.sh
+      break
+      ;;
+   [nN])
+      echo ${RED}"Cancelling update${TEXTRESET}"
+        sleep 1
+      exit
+      ;;
+   *) echo invalid response ;;
+   esac
+done
