@@ -14,13 +14,22 @@ else
 fi
 clear
 cat << EOF
-${GREEN}Samba Server Management${TEXTRESET}
-${GREEN}Restart Samba Server${TEXTRESET}
+${GREEN}Samba Service Management${TEXTRESET}
+${GREEN}Restart Samba Service${TEXTRESET}
 EOF
-
 
 systemctl restart samba
 
-echo ${YELLOW}"*To exit the Next Screen press the "q" key${TEXTRESET}"
-read -p "Press Any Key"
+sleep 1
+
+cat <<EOF
+Checking Status
+
+${YELLOW}You can press "q" on the next screen to escape${TEXTRESET}
+EOF
+
+sleep 3
+
 systemctl status samba
+
+read -p "Press Any Key"
