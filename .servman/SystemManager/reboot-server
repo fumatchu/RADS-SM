@@ -27,6 +27,7 @@ while true; do
    [yY])
       echo ${RED}"Rebooting Now${TEXTRESET}"
       sleep 1
+      reboot
       break
       ;;
    [nN])
