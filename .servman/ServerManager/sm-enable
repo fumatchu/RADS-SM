@@ -14,8 +14,8 @@ else
 fi
 clear
 cat << EOF
-${GREEN}System Management${TEXTRESET}
-${GREEN}System Management On-Boot${TEXTRESET}
+${GREEN}Server Management${TEXTRESET}
+${GREEN}Server Management On-Boot${TEXTRESET}
 EOF
 
 
@@ -23,9 +23,12 @@ while true; do
 read -p "Do you want to enable System Management GUI Automatically? (y/n) " yn
 case $yn in
    [yY] ) echo "/usr/bin/server-manager" >> /root/.bash_profile;
-      break;;
-   [nN] ) echo exiting...;
-      exit;;
+          echo ${GREEN}"Added${TEXTRESET}";
+          sleep 1;
+       break;;
+   [nN] ) echo ${RED}"Cancelled${TEXTRESET}";
+          sleep 1;
+          exit;;
    * ) echo invalid response;;
 esac
 done
