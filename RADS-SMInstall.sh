@@ -30,7 +30,7 @@ cat <<EOF
 ${GREEN}Installing Server Management${TEXTRESET}
 This Installer will provide a set of scripts wrapped in a dialog GUI
 You will be able to manage components of AD, DHCP and services
-At Anytime from the cLI, type ${YELLOW}server-manager${TEXTRESET}
+At Anytime from the CLI, type ${YELLOW}server-manager${TEXTRESET}
 
 
 The installer will continue shortly
