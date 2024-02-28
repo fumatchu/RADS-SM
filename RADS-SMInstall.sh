@@ -29,13 +29,14 @@ fi
 cat <<EOF
 ${GREEN}Installing Server Management${TEXTRESET}
 This Installer will provide a set of scripts wrapped in a dialog GUI
-you will be able to manage components of AD, DHCP and services with it
+You will be able to manage components of AD, DHCP and services
+At Anytime from the cLI, type ${YELLOW}server-manager${TEXTRESET}
 
 
 The installer will continue shortly
 EOF
 
-sleep 5
+sleep 7
 dnf -y install dialog nano htop iptraf-ng mc
 rm -r -f /root/.servman
 rm -f /usr/bin/server-manager
