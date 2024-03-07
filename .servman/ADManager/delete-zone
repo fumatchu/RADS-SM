@@ -29,7 +29,7 @@ samba-tool dns zonelist ${FQDN}
 
 
 echo " "
-read -p "Please provide the name of the forward zone you want to delete: " ZONE
+read -p "Please provide the name of the zone you want to delete: " ZONE
 
 
 samba-tool dns zonedelete  ${FQDN} ${ZONE} -U administrator
