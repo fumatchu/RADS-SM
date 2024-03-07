@@ -1,0 +1,56 @@
+#!/bin/bash
+TEXTRESET=$(tput sgr0)
+RED=$(tput setaf 1)
+YELLOW=$(tput setaf 3)
+GREEN=$(tput setaf 2)
+USER=$(whoami)
+FQDN=$(hostname)
+DOMAIN=$(hostname | sed 's/^[^.:]*[.:]//')
+
+
+#Checking for user permissions
+if [ "$USER" = "root" ]; then
+echo " "
+else
+  echo ${RED}"This program must be run as root ${TEXTRESET}"
+  echo "Exiting"
+fi
+clear
+cat << EOF
+${GREEN}Active Directory Management${TEXTRESET}
+${GREEN}DNS Add Host${TEXTRESET}
+EOF
+
+
+read -p "Please provide the name of the A record name you want to add: " HOST
+read -p "Please provide the IP Address of the A record: " IP
+
+samba-tool dns add  ${FQDN} ${DOMAIN} ${HOST} A ${IP} -U administrator
+
+
+
+while true; do
+   read -p "Would you like to add a PTR for this A record? (y/n) " yn
+   case $yn in
+   [yY])
+      REVERSE=$(echo "$IP" | {
+  IFS=. read q1 q2 q3 q4
+  echo "$q3.$q2.$q1"
+})
+      REVERSELAST=$(echo "$IP" | {
+  IFS=. read q1 q2 q3 q4
+  echo "$q4"
+})
+
+      samba-tool dns add ${FQDN} ${REVERSE}.in-addr.arpa ${REVERSELAST} PTR ${HOST} -U Administrator
+      break
+      ;;
+   [nN])
+      echo ${RED}"PTR NOT CHOSEN${TEXTRESET}"
+      sleep 1
+      exit
+      ;;
+   *) echo invalid response ;;
+   esac
+done
+exit
