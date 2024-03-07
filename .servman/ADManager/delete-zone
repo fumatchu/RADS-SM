@@ -1,0 +1,45 @@
+#!/bin/bash
+TEXTRESET=$(tput sgr0)
+RED=$(tput setaf 1)
+YELLOW=$(tput setaf 3)
+GREEN=$(tput setaf 2)
+USER=$(whoami)
+FQDN=$(hostname)
+DOMAIN=$(hostname | sed 's/^[^.:]*[.:]//')
+
+
+#Checking for user permissions
+if [ "$USER" = "root" ]; then
+echo " "
+else
+  echo ${RED}"This program must be run as root ${TEXTRESET}"
+  echo "Exiting"
+fi
+clear
+cat << EOF
+${GREEN}Active Directory Management${TEXTRESET}
+${GREEN}DNS Create New Zone${TEXTRESET}
+EOF
+echo "Listing Zones"
+
+sleep 1
+
+samba-tool dns zonelist ${FQDN}
+
+
+
+echo " "
+read -p "Please provide the name of the forward zone you want to delete: " ZONE
+
+
+samba-tool dns zonedelete  ${FQDN} ${ZONE} -U administrator
+
+sleep 1
+clear
+echo "Listing Zones"
+
+sleep 1
+
+samba-tool dns zonelist ${FQDN}
+
+sleep 4
