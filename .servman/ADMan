@@ -18,6 +18,7 @@ items=(1 "Add User"
     7 "List Groups"
     8 "Move users to Group"
     9 "Remove User from Group"
+   10 "Create DNS A Record"
 )
 
 while choice=$(dialog --title "$TITLE" \
@@ -34,7 +35,7 @@ while choice=$(dialog --title "$TITLE" \
     7) /root/.servman/ADManager/list-group ;;
     8) /root/.servman/ADManager/mv-user-to-group ;;
     9) /root/.servman/ADManager/rm-user-frm-group ;;
-
+   10) /root/.servman/ADManager/create-host-entry ;;
     esac
 done
 clear # clear after user pressed Cancel
