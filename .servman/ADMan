@@ -11,6 +11,7 @@ fi
 
 items=(1 "User/Group Management"
        2 "DNS Management"
+       3 "Generate RSAT file"
 )
 
 while choice=$(dialog --title "$TITLE" \
@@ -20,6 +21,7 @@ while choice=$(dialog --title "$TITLE" \
     case $choice in
     1) /root/.servman/ADManUser ;;
     2) /root/.servman/ADManNS ;;
+    3) /root/.servman/ADManager/generate-RSAT-bat ;;
     esac
 done
 clear # clear after user pressed Cancel
