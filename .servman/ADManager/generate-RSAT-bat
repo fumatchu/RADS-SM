@@ -1,0 +1,103 @@
+#!/bin/bash
+TEXTRESET=$(tput sgr0)
+RED=$(tput setaf 1)
+YELLOW=$(tput setaf 3)
+GREEN=$(tput setaf 2)
+USER=$(whoami)
+FQDN=$(hostname)
+ADDOMAIN=$(hostname | sed 's/^[^.:]*[.:]//' |cut -d. -f1 | sed -e 's/\(.*\)/\U\1/')
+
+#Checking for user permissions
+if [ "$USER" = "root" ]; then
+echo " "
+else
+  echo ${RED}"This program must be run as root ${TEXTRESET}"
+  echo "Exiting"
+fi
+clear
+cat << EOF
+${GREEN}Active Directory Management${TEXTRESET}
+${GREEN}Generate RSAT Batch file for this domain${TEXTRESET}
+
+
+This will generate a bat file to allow you to manage the DC
+From an unjoined (NON-DOMAIN) computer.
+
+
+If the computer you are going to manage it on is NOT in the domain:
+     Adjust your DNS on your laptop/device to point to the AD server for DNS resolution
+ 
+This script will create a file for you in the root directory.
+This bat file will allow you to login into the domain and load mmc via the "runas" as an administrator of the domain.
+
+From there, you can add the snap-ins and manage the Domain Controller
+
+In order to download the file from this DC, you can:
+ 
+        Use cockpit and the navigator plug-in (not installed)
+
+        Or you can use winSCP or some other derivative of SCP to allow this to happen.
+
+If you are familiar with cockpit, we can install this (Navigator) for you if you like.
+If you choose not to install cockpit-navigator and use an SCP derivative, either way, 
+The bat file will be in the root directory after answering yes or no to the following question 
+EOF
+
+read -r -p "Would you like to install cockpit-navigator for file system access through cockpit? [y/N]" -n 1
+echo # (optional) move to a new line
+if [[ "$REPLY" =~ ^[Yy]$ ]]; then
+cat << EOF
+Installing Navigator and generating file.
+Your cockpit instance can be accessed via:
+${FQDN}:9090
+EOF
+        systemctl enable cockpit.socket
+        systemctl start cockpit.socket
+        sleep 5
+        dnf -y install cockpit-navigator
+fi
+
+
+mkdir /root/RSAT-GENERATED-BAT-FILE/
+cat <<EOF > /root/RSAT-GENERATED-BAT-FILE/rsat-admin.bat
+@echo off
+:: BatchGotAdmin
+::-------------------------------------
+REM  --> Check for permissions
+>nul 2>&1 "%SYSTEMROOT%\system32\cacls.exe" "%SYSTEMROOT%\system32\config\system"
+
+REM --> If error flag set, we do not have admin.
+if '%errorlevel%' NEQ '0' (
+    echo Requesting administrative privileges...
+    goto UACPrompt
+) else ( goto gotAdmin )
+
+:UACPrompt
+    echo Set UAC = CreateObject^("Shell.Application"^) > "%temp%\getadmin.vbs"
+    set params = %*:"="
+    echo UAC.ShellExecute "cmd.exe", "/c %~s0 %params%", "", "runas", 1 >> "%temp%\getadmin.vbs"
+
+    "%temp%\getadmin.vbs"
+    del "%temp%\getadmin.vbs"
+    exit /B
+
+:gotAdmin
+    pushd "%CD%"
+    CD /D "%~dp0"
+::--------------------------------------
+
+
+EOF
+
+echo "runas /netonly /noprofile /u:${ADDOMAIN}\Administrator mmc.exe" >> /root/RSAT-GENERATED-BAT-FILE/rsat-admin.bat
+
+
+cat << EOF
+
+The file has been created and is in the directory:
+
+/root/RSAT-GENERATED-BAT-FILE/
+
+EOF
+
+read -p "Press Any Key"
