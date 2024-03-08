@@ -1,0 +1,27 @@
+#!/bin/bash
+user=$(whoami)
+#Checking for user permissions
+if [ "$user" != "root" ]; then
+    echo ${red}"This program must be run as root ${textreset}"
+    echo "Exiting"
+    exit
+else
+    echo "Running Program"
+fi
+
+items=(1 "Create DNS A Record"
+       2 "Create Forward Zone"
+       3 "Create Reverse Zone"
+)
+
+while choice=$(dialog --title "$TITLE" \
+    --backtitle "Active Directory Management --> DNS Management" \
+    --menu "Please select" 25 40 3 "${items[@]}" \
+    2>&1 >/dev/tty); do
+    case $choice in
+    1) /root/.servman/ADManager/create-host-entry ;;
+    2) /root/.servman/ADManager/create-fwd-zone ;;
+    3) /root/.servman/ADManager/create-rev-zone ;;
+    esac
+done
+clear # clear after user pressed Cancel
