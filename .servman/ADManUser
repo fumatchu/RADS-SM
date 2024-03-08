@@ -1,0 +1,40 @@
+#!/bin/bash
+user=$(whoami)
+#Checking for user permissions
+if [ "$user" != "root" ]; then
+    echo ${red}"This program must be run as root ${textreset}"
+    echo "Exiting"
+    exit
+else
+    echo "Running Program"
+fi
+
+items=(1 "Add User"
+    2 "Delete User"
+    3 "Password Reset"
+    4 "List All Users"
+    5 "Create New Group"
+    6 "Delete Group"
+    7 "List Groups"
+    8 "Move users to Group"
+    9 "Remove User from Group"
+)
+
+while choice=$(dialog --title "$TITLE" \
+    --backtitle "Active Directory Management --> User Management" \
+    --menu "Please select" 25 40 3 "${items[@]}" \
+    2>&1 >/dev/tty); do
+    case $choice in
+    1) /root/.servman/ADManager/add-user ;;
+    2) /root/.servman/ADManager/del-user ;;
+    3) /root/.servman/ADManager/pass-reset ;;
+    4) /root/.servman/ADManager/list-all-users ;;
+    5) /root/.servman/ADManager/create-new-group ;;
+    6) /root/.servman/ADManager/delete-group ;;
+    7) /root/.servman/ADManager/list-group ;;
+    8) /root/.servman/ADManager/mv-user-to-group ;;
+    9) /root/.servman/ADManager/rm-user-frm-group ;;
+   10) /root/.servman/ADManager/create-host-entry ;;
+    esac
+done
+clear # clear after user pressed Cancel
