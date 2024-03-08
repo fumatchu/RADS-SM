@@ -23,7 +23,7 @@ echo "Please provide the following information to create a new scope for DHCP:"
 read -p "Please provide the Network SUBNET to create (i.e. 192.168.25.0): " SUBNETNETWORK
 read -p "Please provide the Network MASK to create (i.e. 255.255.255.0): " DHCPNETMASK
 read -p "Please provide the beginning IP address in the lease range: " DHCPBEGIP
-read -p "Please provdie the ending IP address in the lease range: " DHCPENDIP
+read -p "Please provide the ending IP address in the lease range: " DHCPENDIP
 read -p "Please provide the default gateway for clients: " DHCPDEFGW
 read -p "Please provide a description for this subnet: " SUBNETDESC
 
