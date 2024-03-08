@@ -43,6 +43,7 @@ while true; do
 })
 
       samba-tool dns add ${FQDN} ${REVERSE}.in-addr.arpa ${REVERSELAST} PTR ${HOST} -U Administrator
+      sleep 1
       break
       ;;
    [nN])
