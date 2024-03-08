@@ -16,7 +16,7 @@ items=(1 "Add User"
     5 "Create New Group"
     6 "Delete Group"
     7 "List Groups"
-    8 "Move users to Group"
+    8 "Add User to Group"
     9 "Remove User from Group"
 )
 
