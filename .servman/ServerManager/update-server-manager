@@ -32,13 +32,11 @@ while true; do
     wget https://raw.githubusercontent.com/fumatchu/RADS-SM/main/RADS-SMInstaller.sh
     chmod 700 ./RADS-SMInstaller.sh
     /root/RADS-SMInstaller.sh
-    killall -9 server-manager
-    killall -9 dialog
 cat << EOF
     It is suggested that you quit ALL running server-manager/dialog processes
     Close the Server Management GUI completely and from the CLI type server-manager
 EOF
-    sleep 3
+    read -p "Press Any Key"
     cd /root/
     server-manager
     exit
