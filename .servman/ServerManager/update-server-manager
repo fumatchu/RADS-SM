@@ -34,10 +34,10 @@ while true; do
     /root/RADS-SMInstaller.sh
     killall -9 server-manager
     killall -9 dialog
-   cat << EOF
+cat << EOF
     It is suggested that you quit ALL running server-manager/dialog processes
     Close the Server Management GUI completely and from the CLI type server-manager
-    EOF
+EOF
     sleep 3
     cd /root/
     server-manager
