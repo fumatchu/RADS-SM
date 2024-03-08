@@ -31,8 +31,8 @@ cat <<EOF >/root/.servman/DHCPManager/dhcp.tmp
 
 #$SUBNETDESC
 subnet $SUBNETNETWORK netmask $DHCPNETMASK {
-        option subnet-mask $DHCPNETMASK
         range $DHCPBEGIP $DHCPENDIP;
+        option subnet-mask $DHCPNETMASK;
         option routers $DHCPDEFGW;
 }
 EOF
