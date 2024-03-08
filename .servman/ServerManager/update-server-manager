@@ -26,18 +26,14 @@ while true; do
   case $yn in
   [yY])
     echo ${GREEN}"Downloading and installing the latest version of Server Management${TEXTRESET}"
+    cd ~ && cd -
     sed -i '/server-manager/d' /root/.bash_profile
     cd /root/
     dnf -y install wget
     wget https://raw.githubusercontent.com/fumatchu/RADS-SM/main/RADS-SMInstaller.sh
     chmod 700 ./RADS-SMInstaller.sh
     /root/RADS-SMInstaller.sh
-cat << EOF
-    It is suggested that you quit ALL running server-manager/dialog processes
-    Close the Server Management GUI completely and from the CLI type server-manager
-EOF
-    read -p "Press Any Key"
-    cd /root/
+    cd ~ && cd -
     server-manager
     exit
     break
