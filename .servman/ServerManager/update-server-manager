@@ -35,6 +35,11 @@ while true; do
     killall -9 server-manager
     killall -9 dialog
     server-manager
+    cat << EOF
+    It is suggested that you quit ALL running server-manager/dialog processes
+    Close Server Management completely and from the CLI type server-manager
+    EOF
+    sleep 3
     exit
     break
     ;;
