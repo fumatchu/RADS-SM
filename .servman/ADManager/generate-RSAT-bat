@@ -50,11 +50,11 @@ cat << EOF
 Installing Navigator and generating file.
 Your cockpit instance can be accessed via:
 ${FQDN}:9090
-EOF
+EOF  
+        sleep 5
+        dnf -y install cockpit-navigator cockpit cockpit-storaged 
         systemctl enable cockpit.socket
         systemctl start cockpit.socket
-        sleep 5
-        dnf -y install cockpit-navigator
 fi
 
 
