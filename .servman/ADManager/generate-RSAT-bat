@@ -49,7 +49,7 @@ read -r -p "Would you like to install cockpit-navigator for file system access t
 echo # (optional) move to a new line
 if [[ "$REPLY" =~ ^[Yy]$ ]]; then
 
-    echo "Your cockpit instance can be accessed at ${FQDN}:9090"
+    echo ${YELLOW}"Your cockpit instance can be accessed at ${FQDN}:9090"${TEXTRESET}
     sleep 5
     dnf -y install cockpit-navigator cockpit cockpit-storaged
     systemctl enable cockpit.socket
