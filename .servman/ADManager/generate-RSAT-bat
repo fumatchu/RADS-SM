@@ -15,6 +15,7 @@ else
   echo "Exiting"
 fi
 clear
+
 cat << EOF
 ${GREEN}Active Directory Management${TEXTRESET}
 ${GREEN}Generate RSAT Batch file for this domain${TEXTRESET}
@@ -26,40 +27,40 @@ From an unjoined (NON-DOMAIN) computer.
 
 If the computer you are going to manage it on is NOT in the domain:
      Adjust your DNS on your laptop/device to point to the AD server for DNS resolution
- 
+
 This script will create a file for you in the root directory.
 This bat file will allow you to login into the domain and load mmc via the "runas" as an administrator of the domain.
 
 From there, you can add the snap-ins and manage the Domain Controller
 
 In order to download the file from this DC, you can:
- 
+
         Use cockpit and the navigator plug-in (not installed)
 
         Or you can use winSCP or some other derivative of SCP to allow this to happen.
 
 If you are familiar with cockpit, we can install this (Navigator) for you if you like.
-If you choose not to install cockpit-navigator and use an SCP derivative, either way, 
-The bat file will be in the root directory after answering yes or no to the following question 
+If you choose not to install cockpit-navigator and use an SCP derivative, either way,
+The bat file will be in the root directory after answering yes or no to the following question
+
 EOF
 
 read -r -p "Would you like to install cockpit-navigator for file system access through cockpit? [y/N]" -n 1
 echo # (optional) move to a new line
 if [[ "$REPLY" =~ ^[Yy]$ ]]; then
-cat << EOF
-Installing Navigator and generating file.
-Your cockpit instance can be accessed via:
-${FQDN}:9090
-EOF  
+
+echo "Your cockpit instance can be accessed at ${FQDN}:9090"
         sleep 5
-        dnf -y install cockpit-navigator cockpit cockpit-storaged 
+        dnf -y install cockpit-navigator cockpit cockpit-storaged
         systemctl enable cockpit.socket
         systemctl start cockpit.socket
 fi
 
 
 mkdir /root/RSAT-GENERATED-BAT-FILE/
-cat <<EOF > /root/RSAT-GENERATED-BAT-FILE/rsat-admin.bat
+
+cat << EOF >/root/RSAT-GENERATED-BAT-FILE/rsat-admin.bat
+
 @echo off
 :: BatchGotAdmin
 ::-------------------------------------
@@ -86,18 +87,10 @@ if '%errorlevel%' NEQ '0' (
     CD /D "%~dp0"
 ::--------------------------------------
 
-
 EOF
 
 echo "runas /netonly /noprofile /u:${ADDOMAIN}\Administrator mmc.exe" >> /root/RSAT-GENERATED-BAT-FILE/rsat-admin.bat
+echo "The file has been created and is in the directory: /root/RSAT-GENERATED-BAT-FILE/"
 
-
-cat << EOF
-
-The file has been created and is in the directory:
-
-/root/RSAT-GENERATED-BAT-FILE/
-
-EOF
 
 read -p "Press Any Key"
