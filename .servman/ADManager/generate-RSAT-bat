@@ -5,18 +5,18 @@ YELLOW=$(tput setaf 3)
 GREEN=$(tput setaf 2)
 USER=$(whoami)
 FQDN=$(hostname)
-ADDOMAIN=$(hostname | sed 's/^[^.:]*[.:]//' |cut -d. -f1 | sed -e 's/\(.*\)/\U\1/')
+ADDOMAIN=$(hostname | sed 's/^[^.:]*[.:]//' | cut -d. -f1 | sed -e 's/\(.*\)/\U\1/')
 
 #Checking for user permissions
 if [ "$USER" = "root" ]; then
-echo " "
+    echo " "
 else
-  echo ${RED}"This program must be run as root ${TEXTRESET}"
-  echo "Exiting"
+    echo ${RED}"This program must be run as root ${TEXTRESET}"
+    echo "Exiting"
 fi
 clear
 
-cat << EOF
+cat <<EOF
 ${GREEN}Active Directory Management${TEXTRESET}
 ${GREEN}Generate RSAT Batch file for this domain${TEXTRESET}
 
@@ -49,17 +49,16 @@ read -r -p "Would you like to install cockpit-navigator for file system access t
 echo # (optional) move to a new line
 if [[ "$REPLY" =~ ^[Yy]$ ]]; then
 
-echo "Your cockpit instance can be accessed at ${FQDN}:9090"
-        sleep 5
-        dnf -y install cockpit-navigator cockpit cockpit-storaged
-        systemctl enable cockpit.socket
-        systemctl start cockpit.socket
+    echo "Your cockpit instance can be accessed at ${FQDN}:9090"
+    sleep 5
+    dnf -y install cockpit-navigator cockpit cockpit-storaged
+    systemctl enable cockpit.socket
+    systemctl start cockpit.socket
 fi
-
 
 mkdir /root/RSAT-GENERATED-BAT-FILE/
 
-cat << EOF >/root/RSAT-GENERATED-BAT-FILE/rsat-admin.bat
+cat <<EOF >/root/RSAT-GENERATED-BAT-FILE/rsat-admin.bat
 
 @echo off
 :: BatchGotAdmin
@@ -89,8 +88,7 @@ if '%errorlevel%' NEQ '0' (
 
 EOF
 
-echo "runas /netonly /noprofile /u:${ADDOMAIN}\Administrator mmc.exe" >> /root/RSAT-GENERATED-BAT-FILE/rsat-admin.bat
-echo "The file has been created and is in the directory: /root/RSAT-GENERATED-BAT-FILE/"
-
+echo "runas /netonly /noprofile /u:${ADDOMAIN}\Administrator mmc.exe" >>/root/RSAT-GENERATED-BAT-FILE/rsat-admin.bat
+echo ${GREEN}"The file has been created and is in the directory:${TEXTRESET} ${YELLOW}/root/RSAT-GENERATED-BAT-FILE/${TEXTRESET}"
 
 read -p "Press Any Key"

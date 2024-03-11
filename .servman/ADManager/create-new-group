@@ -7,13 +7,13 @@ USER=$(whoami)
 
 #Checking for user permissions
 if [ "$USER" = "root" ]; then
-echo " "
+  echo " "
 else
   echo ${RED}"This program must be run as root ${TEXTRESET}"
   echo "Exiting"
 fi
 clear
-cat << EOF
+cat <<EOF
 ${GREEN}Active Directory Management${TEXTRESET}
 ${GREEN}Create New Group${TEXTRESET}
 EOF
@@ -23,11 +23,11 @@ read -p "Please provide the Name of the group to create : " "GROUPNAME"
 samba-tool group add "$GROUPNAME"
 
 echo ${GREEN}"Current Group List${TEXTRESET}"
-cat  << EOF
+cat <<EOF
 
 EOF
 samba-tool group list | column -c 100
-cat << EOF
+cat <<EOF
    
 EOF
 read -p "Press Any Key"

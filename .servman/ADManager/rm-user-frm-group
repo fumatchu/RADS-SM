@@ -7,13 +7,13 @@ USER=$(whoami)
 
 #Checking for user permissions
 if [ "$USER" = "root" ]; then
-echo " "
+  echo " "
 else
   echo ${RED}"This program must be run as root ${TEXTRESET}"
   echo "Exiting"
 fi
 clear
-cat << EOF
+cat <<EOF
 ${GREEN}Active Directory Management${TEXTRESET}
 ${GREEN}Remove User From group${TEXTRESET}
 EOF
@@ -21,9 +21,8 @@ EOF
 samba-tool group list | column -c 100
 read -p "Please provide the Name of the group to use : " GROUPNAME
 
-
 clear
-cat << EOF
+cat <<EOF
 ${GREEN}Current Group Members${TEXTRESET}
 
 EOF
@@ -38,4 +37,3 @@ echo ${GREEN}"This is the updated members of this Group:${TEXTRESET}"
 samba-tool group listmembers ${GROUPNAME}
 echo " "
 read -p "Press Any Key"
-
