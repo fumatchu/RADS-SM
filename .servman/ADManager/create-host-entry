@@ -38,7 +38,7 @@ while true; do
          echo "$q4"
       })
 
-      samba-tool dns add ${FQDN} ${REVERSE}.in-addr.arpa ${REVERSELAST} PTR ${HOST}.${DOMAIN} -U Administrator
+      samba-tool dns add ${FQDN} ${REVERSE}.in-addr.arpa ${REVERSELAST} PTR ${HOST}.${DOMAIN}. -U Administrator
       break
       ;;
    [nN])
