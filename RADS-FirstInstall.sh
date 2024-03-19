@@ -50,12 +50,13 @@ echo "/usr/bin/server-manager" >>/root/.bash_profile
 
 rm -r -f /root/RADS-SMInstaller
 rm -r -f /root/RADS-SMInstaller.sh
+clear
 cat << EOF
 ${GREEN}*********************
 Installation complete
 *********************${TEXTRESET}
 The server will reboot now
-Thank you for using RADS
+SM Installation comeplete!
 EOF
 
 read -p "Press Any Key to Continue"
