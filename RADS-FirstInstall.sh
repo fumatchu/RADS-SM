@@ -53,12 +53,13 @@ rm -r -f /root/RADS-*
 clear
 cat << EOF
 ${GREEN}*********************
-Installation complete
+SM Installation Complete
 *********************${TEXTRESET}
-The server will reboot now
-SM Installation comeplete!
-EOF
 
+The server will reboot now
+EOF
+echo " "
 read -p "Press Any Key to Continue"
 echo ${RED}"Rebooting${TEXTRESET}"
 sleep 1
+reboot
