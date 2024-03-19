@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 #RADS-SMInstaller.sh #Bootstrap to GIT REPO
 TEXTRESET=$(tput sgr0)
 RED=$(tput setaf 1)
