@@ -49,4 +49,4 @@ git clone https://github.com/fumatchu/RADS-SM.git /root/RADS-SMInstaller
 chmod 700 /root/RADS-SMInstaller/RA*
 clear
 
-/root/RADS-SMInstaller/RADS-Firstinstall.sh
+/root/RADS-SMInstaller/RADS-FirstInstall.sh
