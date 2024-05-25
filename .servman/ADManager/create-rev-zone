@@ -38,4 +38,4 @@ sleep 1
 
 samba-tool dns zonelist ${FQDN} -U Administrator
 
-sleep 3
+read -p "Press Any Key"
