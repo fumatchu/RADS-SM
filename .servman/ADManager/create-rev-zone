@@ -36,6 +36,6 @@ echo "Listing Zones"
 
 sleep 1
 
-samba-tool dns zonelist ${FQDN}
+samba-tool dns zonelist ${FQDN} -U Administrator
 
 sleep 3
