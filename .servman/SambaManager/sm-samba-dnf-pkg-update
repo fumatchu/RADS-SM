@@ -17,7 +17,8 @@ if [ "$user" != "root" ]; then
    echo "Exiting"
    exit
 else
-   echo "Running Program"
+   clear
+   echo "Running Script"
 fi
 
 #Cleanup
