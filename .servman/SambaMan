@@ -28,7 +28,7 @@ while choice=$(dialog --title "$TITLE" \
     3) /root/.servman/SambaManager/restart-samba-server ;;
     4) /root/.servman/SambaManager/samba-server-status ;;
     5) /root/.servman/SambaManager/samba-update-log ;;
-    6) /root/.servman/SambaManager/sm-samba-dnf-pkg-update ;;
+    6) /usr/bin/samba-dnf-pkg-update ;;
     7) /root/.servman/SambaManager/samba-edit-config ;;
     *) ;; # some action on other
     esac
