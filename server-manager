@@ -1,4 +1,8 @@
 #!/bin/bash
+TEXTRESET=$(tput sgr0)
+RED=$(tput setaf 1)
+YELLOW=$(tput setaf 3)
+GREEN=$(tput setaf 2)
 user=$(whoami)
 #Checking for user permissions
 if [ "$user" != "root" ]; then
@@ -8,6 +12,36 @@ if [ "$user" != "root" ]; then
 else
     echo "Running Program"
 fi
+
+MOTD_FILE="/etc/motd"
+EXECUTABLE="/usr/bin/samba-dnf-pkg-update"
+
+# Check if the MOTD file is empty
+if [ -s "$MOTD_FILE" ]; then
+    # Display the contents of the MOTD file
+    cat "$MOTD_FILE"
+
+    # Prompt the user if they want to run the executable
+    read -p "Do you want to run the $EXECUTABLE? (y/n): " response
+
+    # Convert the response to lowercase
+    response=$(echo "$response" | tr '[:upper:]' '[:lower:]')
+
+    # Run the executable if the user agrees
+    if [ "$response" == "y" ] || [ "$response" == "yes" ]; then
+        if [ -x "$EXECUTABLE" ]; then
+            echo "Running $EXECUTABLE..."
+            "$EXECUTABLE"
+        else
+            echo "Error: $EXECUTABLE is not executable or not found."
+        fi
+    else
+        echo "The executable was not run."
+    fi
+else
+    echo ""
+fi
+
 
 items=(1 "Active Directory Management"
     2 "DHCP Management"
