@@ -8,7 +8,33 @@ if [ "$user" != "root" ]; then
 else
     echo "Running Program"
 fi
+# Check if DHCP is installed by looking for dhcpd.conf
+if [ -f "/etc/dhcp/dhcpd.conf" ]; then
+  echo "DHCP is installed."
+else
+  echo -e "\e[31mCan't find dhcpd.conf in its usual place. \e[0m"
+  echo "Make sure you have the ISC DHCP server installed."
 
+  # Ask user if they want to install DHCP
+  read -p "Do you want to install DHCP? (y/n): " user_input
+
+  # Convert the input to lowercase to handle different cases
+  user_input=$(echo "$user_input" | tr '[:upper:]' '[:lower:]')
+
+  if [ "$user_input" = "y" ] || [ "$user_input" = "yes" ]; then
+    echo "Installing DHCP..."
+    dnf -y install dhcp-server
+    if [ $? -eq 0 ]; then
+      echo "DHCP installed successfully."
+    else
+      echo "Failed to install DHCP."
+      exit 1
+    fi
+  else
+    echo "Exiting without installing DHCP..."
+    exit 0
+  fi
+fi
 items=(1 "Create new DHCP Scope"
     2 "List DHCP Leases"
     3 "Query DHCP Database"
