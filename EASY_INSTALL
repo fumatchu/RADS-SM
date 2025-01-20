@@ -5,8 +5,4 @@
 #After the GUI install:
 #(Just copy and paste the following lines on the Rocky terminal or remote SSH terminal- remote suggested)
 
-cd /root/
-dnf -y install wget
-wget https://raw.githubusercontent.com/fumatchu/RADS-SM/main/RADS-FirstInstaller.sh
-chmod 700 ./RADS-FirstInstaller.sh
-/root/RADS-FirstInstaller.sh
+dnf -y install wget dialog  && cd /root && bash <(wget -qO- https://raw.githubusercontent.com/fumatchu/RADS-SM/main/RADS-FirstInstaller.sh)
