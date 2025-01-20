@@ -44,9 +44,9 @@ EOF
 
 mkdir /root/RADS-SM
 
-git clone https://github.com/fumatchu/RADS-SM.git /root/RADS-SM
+git clone https://github.com/fumatchu/RADS-SM.git /root/RADS-SMInstaller
 
-chmod 700 /root/RADS-SM/RA*
+chmod 700 /root/RADS-SMInstaller/RA*
 clear
 
-/root/RADS-SM/RADS-SMInstall.sh
+/root/RADS-SMInstaller/RADS-SMInstall.sh
