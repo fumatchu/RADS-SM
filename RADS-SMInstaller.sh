@@ -42,7 +42,7 @@ Retrieving Files from GitHub
 *****************************${TEXTRESET}
 EOF
 
-mkdir /root/RADS-SMInstaller
+mkdir /root/RADS-SM
 
 git clone https://github.com/fumatchu/RADS-SM.git /root/RADS-SM
 
