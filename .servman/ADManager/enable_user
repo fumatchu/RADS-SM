@@ -1,37 +1,116 @@
 #!/bin/bash
+
 TEXTRESET=$(tput sgr0)
 RED=$(tput setaf 1)
-YELLOW=$(tput setaf 3)
 GREEN=$(tput setaf 2)
-USER=$(whoami)
 
-#Checking for user permissions
-if [ "$USER" = "root" ]; then
-  echo " "
-else
-  echo ${RED}"This program must be run as root ${TEXTRESET}"
-  echo "Exiting"
-fi
-clear
-cat <<EOF
-${GREEN}Active Directory Management${TEXTRESET}
-${GREEN}Enable USer${TEXTRESET}
+TMP_INPUT=$(mktemp)
+trap 'rm -f "$TMP_INPUT"' EXIT
 
-EOF
+# === Detect Domain Controller ===
+detect_dc() {
+    local dc
+    dc=$(hostname -f)
+    if ! ping -c1 -W1 "$dc" &>/dev/null; then
+        realm=$(samba-tool testparm --parameter-name="realm" 2>/dev/null | awk '{print $1}')
+        dc=$(host -t A "$realm" | awk '/has address/ {print $NF; exit}')
+    fi
+    echo "$dc"
+}
 
-samba-tool user list
-echo " "
-read -p "From the list, please provide the account you want to enable : " LOGINNAME
+# === Prompt for Admin Password ===
+prompt_admin_password() {
+    while true; do
+        ADMIN_PASS=$(dialog --insecure --passwordbox "Enter the Samba Administrator password:" 8 50 3>&1 1>&2 2>&3) || exit 1
+        if samba-tool user list -H ldap://"$DC" -U "Administrator%$ADMIN_PASS" --option="password server = *" &>/dev/null; then
+            break
+        else
+            dialog --msgbox "Authentication failed. Please try again." 7 50
+        fi
+    done
+}
 
+# === Get Domain Base DN from Realm ===
+get_domain_base_dn() {
+    local realm
+    realm=$(samba-tool testparm --parameter-name="realm" 2>/dev/null | awk '{print $1}')
+    IFS='.' read -ra parts <<< "$realm"
+    local base_dn=""
+    for part in "${parts[@]}"; do
+        base_dn+="DC=${part},"
+    done
+    echo "${base_dn%,}"
+}
 
-samba-tool user enable $LOGINNAME
+# === Get User DN ===
+get_user_dn() {
+    local user="$1"
+    local search_base
+    search_base=$(get_domain_base_dn)
+    ldbsearch -H ldap://"$DC" -U "Administrator%$ADMIN_PASS" -b "$search_base" "(sAMAccountName=$user)" dn 2>/dev/null | awk -F': ' '/^dn: / { print $2 }'
+}
 
-cat <<EOF
-${GREEN}User Status${TEXTRESET}
+# === Get Account Status by userAccountControl ===
+get_account_status() {
+    local user="$1"
+    local full_dn
+    full_dn=$(get_user_dn "$user")
+    if [ -z "$full_dn" ]; then
+        echo "UNKNOWN"
+        return
+    fi
 
-EOF
+    uac=$(ldbsearch -H ldap://"$DC" -U "Administrator%$ADMIN_PASS" -b "$full_dn" userAccountControl 2>/dev/null | awk -F': ' '/^userAccountControl:/ {print $2}')
+    case "$uac" in
+        512) echo "ENABLED" ;;
+        514) echo "DISABLED" ;;
+        *) echo "UNKNOWN" ;;
+    esac
+}
 
-samba-tool user show $LOGINNAME
+# === List Users with Status and Prompt for Enable/Disable ===
+manage_user_status() {
+    mapfile -t USERS < <(samba-tool user list -H ldap://"$DC" -U "Administrator%$ADMIN_PASS" --option="password server = *" | sort)
 
+    if [ ${#USERS[@]} -eq 0 ]; then
+        dialog --msgbox "No users found in the directory." 7 40
+        exit 1
+    fi
 
-read -p "Press Enter"
+    local choices=()
+    for user in "${USERS[@]}"; do
+        status=$(get_account_status "$user")
+        choices+=("$user" "$status")
+    done
+
+    SELECTED_USER=$(dialog --clear --title "Enable/Disable User" \
+        --menu "Select a user account to enable/disable:" 20 70 15 \
+        "${choices[@]}" \
+        3>&1 1>&2 2>&3) || exit 1
+
+    CURRENT_STATUS=$(get_account_status "$SELECTED_USER")
+
+    if [ "$CURRENT_STATUS" == "DISABLED" ]; then
+        dialog --yesno "The account is currently DISABLED. Enable it?" 7 50
+        if [ $? -eq 0 ]; then
+            samba-tool user enable "$SELECTED_USER" -H ldap://"$DC" -U "Administrator%$ADMIN_PASS" --option="password server = *"
+            dialog --msgbox "User '$SELECTED_USER' has been ENABLED." 6 50
+        fi
+    elif [ "$CURRENT_STATUS" == "ENABLED" ]; then
+        dialog --yesno "The account is currently ENABLED. Disable it?" 7 50
+        if [ $? -eq 0 ]; then
+            samba-tool user disable "$SELECTED_USER" -H ldap://"$DC" -U "Administrator%$ADMIN_PASS" --option="password server = *"
+            dialog --msgbox "User '$SELECTED_USER' has been DISABLED." 6 50
+        fi
+    else
+        dialog --msgbox "Unable to determine account status for '$SELECTED_USER'." 6 50
+    fi
+
+    # Refresh the status and rerun the selection loop
+    manage_user_status
+}
+
+# === Main ===
+DC=$(detect_dc)
+prompt_admin_password
+manage_user_status
