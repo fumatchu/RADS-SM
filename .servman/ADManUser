@@ -12,14 +12,13 @@ fi
 items=(1 "Add User"
     2 "Delete User"
     3 "Password Reset"
-    4 "Enable User"
-    5 "Disable User"
-    6 "List All Users"
-    7 "Create New Group"
-    8 "Delete Group"
-    9 "List Groups"
-   10 "Add User to Group"
-   11 "Remove User from Group"
+    4 "Enable/Disable User"
+    5 "List All Users"
+    6 "Create New Group"
+    7 "Delete Group"
+    8 "List Groups"
+    9 "Add User to Group"
+   10 "Remove User from Group"
 )
 
 while choice=$(dialog --title "$TITLE" \
@@ -27,17 +26,16 @@ while choice=$(dialog --title "$TITLE" \
     --menu "Please select" 25 40 3 "${items[@]}" \
     2>&1 >/dev/tty); do
     case $choice in
-    1) /root/.servman/ADManager/add-user ;;
-    2) /root/.servman/ADManager/del-user ;;
+    1) /root/.servman/ADManager/adduser.sh ;;
+    2) /root/.servman/ADManager/deleteuser.sh ;;
     3) /root/.servman/ADManager/pass-reset ;;
-    4) /root/.servman/ADManager/enable_user ;; 
-    5) /root/.servman/ADManager/disable_user ;;
-    6) /root/.servman/ADManager/list-all-users ;;
-    7) /root/.servman/ADManager/create-new-group ;;
-    8) /root/.servman/ADManager/delete-group ;;
-    9) /root/.servman/ADManager/list-group ;;
-   10) /root/.servman/ADManager/mv-user-to-group ;;
-   11) /root/.servman/ADManager/rm-user-frm-group ;;
+    4) /root/.servman/ADManager/enable_disable.sh ;;
+    5) /root/.servman/ADManager/list-all-users ;;
+    6) /root/.servman/ADManager/create-new-group ;;
+    7) /root/.servman/ADManager/delete-group ;;
+    8) /root/.servman/ADManager/list-group ;;
+    9) /root/.servman/ADManager/mv-user-to-group ;;
+   10) /root/.servman/ADManager/rm-user-frm-group ;;
     esac
 done
 clear # clear after user pressed Cancel
