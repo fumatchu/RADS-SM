@@ -1,39 +1,28 @@
 #!/bin/bash
-TEXTRESET=$(tput sgr0)
-RED=$(tput setaf 1)
-YELLOW=$(tput setaf 3)
-GREEN=$(tput setaf 2)
+
 USER=$(whoami)
 
-#Checking for user permissions
-if [ "$USER" = "root" ]; then
-echo " "
-else
-  echo ${RED}"This program must be run as root ${TEXTRESET}"
-  echo "Exiting"
+# --- Check root ---
+if [ "$USER" != "root" ]; then
+    dialog --title "Permission Denied" --msgbox "This program must be run as root.\nExiting." 7 50
+    exit 1
 fi
-clear
-cat << EOF
-${GREEN}System Management${TEXTRESET}
-${GREEN}Shutdown Server${TEXTRESET}
-EOF
 
-cat <<EOF
-This will ${RED}SHUTDOWN${TEXTESET} the system now
-EOF
-while true; do
-   read -p "Do you want to proceed? (y/n) " yn
-   case $yn in
-   [yY])
-      echo ${RED}"Powering Off${TEXTRESET}"
-      sleep 1
-      shutdown -h now
-      break
-      ;;
-   [nN])
-      echo ${RED}"Cancelled${TEXTRESET}"
-      exit
-      ;;
-   *) echo invalid response ;;
-   esac
-done
+# --- Clear screen ---
+clear
+
+# --- Main dialog header ---
+dialog --title "System Management" --msgbox "Shutdown Server\n\nThis will SHUTDOWN the system now." 8 60
+
+# --- Confirm shutdown ---
+dialog --title "Confirm Shutdown" --yesno "Do you want to proceed with shutting down the server?" 8 60
+RESPONSE=$?
+
+if [ $RESPONSE -eq 0 ]; then
+    dialog --title "Powering Off" --msgbox "The system will shutdown now..." 6 50
+    sleep 1
+    shutdown -h now
+else
+    dialog --title "Cancelled" --msgbox "Shutdown operation cancelled." 6 50
+    exit 0
+fi
