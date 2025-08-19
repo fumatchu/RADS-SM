@@ -1,23 +1,30 @@
 #!/bin/bash
-#Checking for user permissions
-user=$(whoami)
-if [ "$user" != "root" ]; then
-echo ${red}"This program must be run as root ${textreset}"
-echo "Exiting"
-exit
-else
-echo "Running Program"
-fi
-textreset=$(tput sgr0)
-red=$(tput setaf 1)
-yellow=$(tput setaf 3)
-green=$(tput setaf 2)
 
+# --- Color setup ---
+TEXTRESET=$(tput sgr0)
+RED=$(tput setaf 1)
+YELLOW=$(tput setaf 3)
+GREEN=$(tput setaf 2)
+
+# --- Check root ---
+USER=$(whoami)
+if [ "$USER" != "root" ]; then
+    echo "${RED}This program must be run as root${TEXTRESET}"
+    echo "Exiting"
+    exit 1
+fi
+
+# --- Temporary file ---
+TMP_FILE=$(mktemp)
+trap 'rm -f "$TMP_FILE"' EXIT
+
+# --- Clear screen ---
 clear
 
-cat <<EOF
-${green}Network Settings${textreset}
+# --- Fetch nmcli info ---
+nmcli > "$TMP_FILE" 2>&1
 
-EOF
-nmcli
-read -p "Press Any Key"
+# --- Show dialog textbox ---
+dialog --backtitle "Network Settings" \
+       --title "nmcli Network Overview" \
+       --textbox "$TMP_FILE" 35 80
