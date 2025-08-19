@@ -1,33 +1,46 @@
 #!/bin/bash
 TEXTRESET=$(tput sgr0)
 RED=$(tput setaf 1)
-YELLOW=$(tput setaf 3)
 GREEN=$(tput setaf 2)
 USER=$(whoami)
 
-#Checking for user permissions
-if [ "$USER" = "root" ]; then
-  echo " "
-else
-  echo ${RED}"This program must be run as root ${TEXTRESET}"
-  echo "Exiting"
+# Temporary file for dialog output
+TMP_FILE=$(mktemp)
+trap 'rm -f "$TMP_FILE"' EXIT
+
+# --- Check root permissions ---
+if [ "$USER" != "root" ]; then
+    echo "${RED}This program must be run as root${TEXTRESET}"
+    exit 1
 fi
-clear
-cat <<EOF
-${GREEN}Active Directory Management${TEXTRESET}
-${GREEN}Create New Group${TEXTRESET}
-EOF
 
-read -p "Please provide the Name of the group to create : " "GROUPNAME"
+while true; do
+    # --- Prompt for group name ---
+    GROUPNAME=$(dialog --inputbox "Enter the name of the new group:" 8 50 3>&1 1>&2 2>&3)
+    [ $? -ne 0 ] && exit 0  # User pressed ESC or Cancel
 
-samba-tool group add "$GROUPNAME"
+    # --- Check if group already exists ---
+    if samba-tool group list | grep -Fxq "$GROUPNAME"; then
+        dialog --msgbox "Group '$GROUPNAME' already exists in Active Directory.\nPlease enter a different name." 8 50
+        continue
+    fi
 
-echo ${GREEN}"Current Group List${TEXTRESET}"
-cat <<EOF
+    # --- Try to create group ---
+    CREATE_OUTPUT=$(samba-tool group add "$GROUPNAME" 2>&1)
+    EXIT_CODE=$?
 
-EOF
-samba-tool group list | column -c 100
-cat <<EOF
-   
-EOF
-read -p "Press Any Key"
+    if [ $EXIT_CODE -eq 0 ]; then
+        dialog --msgbox "Group '$GROUPNAME' successfully created." 7 50
+        break
+    else
+        echo "$CREATE_OUTPUT" > "$TMP_FILE"
+        dialog --title "Error Creating Group" --textbox "$TMP_FILE" 20 70
+        # Ask if user wants to retry
+        dialog --yesno "Do you want to try again?" 7 50
+        [ $? -ne 0 ] && exit 0
+    fi
+done
+
+# --- Show updated group list ---
+samba-tool group list > "$TMP_FILE"
+dialog --title "Current AD Groups" --textbox "$TMP_FILE" 20 70
