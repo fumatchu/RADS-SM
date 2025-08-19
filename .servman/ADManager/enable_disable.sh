@@ -22,7 +22,7 @@ detect_dc() {
 prompt_admin_password() {
     while true; do
         ADMIN_PASS=$(dialog --insecure --passwordbox "Enter the Samba Administrator password:" 8 50 3>&1 1>&2 2>&3) || exit 1
-        if samba-tool user list -H ldap://"$DC" -U "Administrator%$ADMIN_PASS" --option="password server = *" &>/dev/null; then
+        if samba-tool user list -H ldap://"$DC" -U "Administrator%$ADMIN_PASS" &>/dev/null; then
             break
         else
             dialog --msgbox "Authentication failed. Please try again." 7 50
@@ -71,14 +71,16 @@ get_account_status() {
 # === List Users with Status and Prompt for Enable/Disable ===
 manage_user_status() {
     while true; do
-        mapfile -t USERS < <(samba-tool user list -H ldap://"$DC" -U "Administrator%$ADMIN_PASS" --option="password server = *" | sort)
+        # Fetch users
+        mapfile -t USERS < <(samba-tool user list -H ldap://"$DC" -U "Administrator%$ADMIN_PASS" | sort)
 
         if [ ${#USERS[@]} -eq 0 ]; then
-            dialog --msgbox "No users found in the directory." 7 40
+            dialog --msgbox "No users found in the directory." 7 50
             return
         fi
 
-        local choices=("__BACK__" "<-- Back to Main Menu")
+        # Build dialog menu
+        local choices=()
         for user in "${USERS[@]}"; do
             status=$(get_account_status "$user")
             choices+=("$user" "$status")
@@ -89,22 +91,18 @@ manage_user_status() {
             "${choices[@]}" \
             3>&1 1>&2 2>&3) || return
 
-        if [ "$SELECTED_USER" == "__BACK__" ]; then
-            return
-        fi
-
         CURRENT_STATUS=$(get_account_status "$SELECTED_USER")
 
         if [ "$CURRENT_STATUS" == "DISABLED" ]; then
             dialog --yesno "The account is currently DISABLED. Enable it?" 7 50
             if [ $? -eq 0 ]; then
-                samba-tool user enable "$SELECTED_USER" -H ldap://"$DC" -U "Administrator%$ADMIN_PASS" --option="password server = *"
+                samba-tool user enable "$SELECTED_USER" -H ldap://"$DC" -U "Administrator%$ADMIN_PASS"
                 dialog --msgbox "User '$SELECTED_USER' has been ENABLED." 6 50
             fi
         elif [ "$CURRENT_STATUS" == "ENABLED" ]; then
             dialog --yesno "The account is currently ENABLED. Disable it?" 7 50
             if [ $? -eq 0 ]; then
-                samba-tool user disable "$SELECTED_USER" -H ldap://"$DC" -U "Administrator%$ADMIN_PASS" --option="password server = *"
+                samba-tool user disable "$SELECTED_USER" -H ldap://"$DC" -U "Administrator%$ADMIN_PASS"
                 dialog --msgbox "User '$SELECTED_USER' has been DISABLED." 6 50
             fi
         else
