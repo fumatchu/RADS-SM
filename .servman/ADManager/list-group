@@ -1,25 +1,42 @@
 #!/bin/bash
-TEXTRESET=$(tput sgr0)
-RED=$(tput setaf 1)
-YELLOW=$(tput setaf 3)
-GREEN=$(tput setaf 2)
-USER=$(whoami)
 
-#Checking for user permissions
-if [ "$USER" = "root" ]; then
-  echo " "
-else
-  echo ${RED}"This program must be run as root ${TEXTRESET}"
-  echo "Exiting"
+TMP_FILE=$(mktemp)
+trap 'rm -f "$TMP_FILE"' EXIT
+
+# === Fetch groups directly on the DC ===
+GROUPS_RAW=$(samba-tool group list 2>/dev/null)
+
+if [ -z "$GROUPS_RAW" ]; then
+    echo "No groups found in the domain."
+    exit 1
 fi
-clear
-cat <<EOF
-${GREEN}Active Directory Management${TEXTRESET}
-${GREEN}List All Groups${TEXTRESET}
 
-EOF
-echo ${GREEN} Current Group List${TEXTRESET}
-echo " "
-samba-tool group list | column -c 100
-echo " "
-read -p "Press Any Key"
+# Convert groups to array
+mapfile -t GROUPS_ARRAY <<< "$GROUPS_RAW"
+
+# Main loop: group selection -> show members -> return
+while true; do
+    CHOICES=()
+    for group in "${GROUPS_ARRAY[@]}"; do
+        CHOICES+=("$group" "")
+    done
+
+    SELECTED_GROUP=$(dialog --clear --title "Active Directory Groups" \
+        --menu "Select a group to see its members:" 20 70 15 \
+        "${CHOICES[@]}" \
+        3>&1 1>&2 2>&3)
+
+    # If user presses ESC / Cancel, exit loop
+    if [ $? -ne 0 ]; then
+        clear
+        echo "Exiting."
+        break
+    fi
+
+    # Show members of selected group in a textbox
+    samba-tool group listmembers "$SELECTED_GROUP" > "$TMP_FILE" 2>&1
+
+    dialog --title "Members of $SELECTED_GROUP" --textbox "$TMP_FILE" 20 70
+
+    # When the textbox is closed, the loop restarts and shows the group list again
+done
