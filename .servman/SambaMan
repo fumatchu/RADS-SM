@@ -1,36 +1,159 @@
 #!/bin/bash
-user=$(whoami)
-#Checking for user permissions
-if [ "$user" != "root" ]; then
-    echo ${red}"This program must be run as root ${textreset}"
-    echo "Exiting"
-    exit
-else
-    echo "Running Program"
-fi
+#================================================================
+# SambaMan - Dialog-based Samba Management Script
+# Combines config editing, service control, and status checking
+#================================================================
 
-items=(1 "Start Samba Service"
-    2 "Stop Samba Service"
-    3 "Restart Samba Service"
-    4 "Samba Service Status"
-    5 "Samba Update Synchronization Log"
-    6 "Samba Update"
-    7 "Manually Edit Samba Config"
-)
+# Global Samba configuration path
+SMB_CONF="/etc/samba/smb.conf"
 
-while choice=$(dialog --title "$TITLE" \
-    --backtitle "Samba Service Management" \
-    --menu "Please select" 20 45 3 "${items[@]}" \
-    2>&1 >/dev/tty); do
-    case $choice in
-    1) /root/.servman/SambaManager/start-samba-server ;;
-    2) /root/.servman/SambaManager/stop-samba-server ;;
-    3) /root/.servman/SambaManager/restart-samba-server ;;
-    4) /root/.servman/SambaManager/samba-server-status ;;
-    5) /root/.servman/SambaManager/samba-update-log ;;
-    6) /usr/bin/samba-dnf-pkg-update ;;
-    7) /root/.servman/SambaManager/samba-edit-config ;;
-    *) ;; # some action on other
+#----------------------------
+# Function: Edit Samba Config
+#----------------------------
+samba_edit_config() {
+    # Create backup
+    BACKUP="$SMB_CONF.backup.$(date +%Y%m%d%H%M%S)"
+    cp "$SMB_CONF" "$BACKUP"
+
+    # Edit in dialog textbox
+    TMPFILE=$(mktemp)
+    cp "$SMB_CONF" "$TMPFILE"
+
+    dialog --title "Edit smb.conf" --editbox "$TMPFILE" 30 90 2>"$TMPFILE.tmp"
+    if [ $? -eq 0 ]; then
+        # Validate using testparm
+        if testparm -s "$TMPFILE.tmp" >/dev/null 2>&1; then
+            cp "$TMPFILE.tmp" "$SMB_CONF"
+            dialog --msgbox "smb.conf updated and backup created at:\n$BACKUP" 8 70
+
+            # Ask to restart Samba
+            dialog --yesno "Do you want to restart Samba now?" 7 50
+            if [ $? -eq 0 ]; then
+                systemctl restart samba
+                sleep 1
+                if systemctl is-active --quiet samba; then
+                    dialog --msgbox "Samba restarted successfully." 7 50
+                else
+                    dialog --msgbox "Failed to restart Samba!" 7 50
+                fi
+            fi
+        else
+            dialog --msgbox "Error: smb.conf is not valid. Changes NOT saved!" 7 60
+        fi
+    fi
+
+    rm -f "$TMPFILE" "$TMPFILE.tmp"
+}
+
+#--------------------------------
+# Function: Check Samba Status
+#--------------------------------
+samba_status() {
+    if systemctl is-active --quiet samba; then
+        dialog --msgbox "Samba is running." 7 40
+    else
+        dialog --msgbox "Samba is not running." 7 40
+    fi
+}
+
+#--------------------------------
+# Function: Control Samba Service
+#--------------------------------
+samba_service_control() {
+    while true; do
+        ACTION=$(dialog --title "Samba Service Control" \
+                        --menu "Select an action:" 20 60 6 \
+                        1 "Start Samba" \
+                        2 "Stop Samba" \
+                        3 "Restart Samba" \
+                        4 "Back to Main Menu" \
+                        3>&1 1>&2 2>&3 3>&-)
+
+        case "$ACTION" in
+            1)  # Start Samba
+                if systemctl is-active --quiet samba; then
+                    dialog --msgbox "Samba is already running." 7 50
+                else
+                    systemctl start samba
+                    sleep 1
+                    if systemctl is-active --quiet samba; then
+                        PROCS=$(ps aux | grep '[s]amba' | awk '{print $1, $2, $11}' | head -20)
+                        dialog --title "Samba Started" --msgbox "Samba started successfully.\n\nRunning Processes:\n$PROCS" 20 70
+                    else
+                        dialog --msgbox "Failed to start Samba!" 7 50
+                    fi
+                fi
+                ;;
+            2)  # Stop Samba
+                if ! systemctl is-active --quiet samba; then
+                    dialog --msgbox "Samba is already stopped." 7 50
+                else
+                    systemctl stop samba
+                    sleep 1
+                    if ! pgrep -f samba >/dev/null; then
+                        dialog --msgbox "Samba stopped successfully. No running processes found." 7 60
+                    else
+                        PROCS=$(ps aux | grep '[s]amba' | awk '{print $1, $2, $11}' | head -20)
+                        dialog --title "Warning" --msgbox "Some Samba processes remain:\n$PROCS" 20 70
+                    fi
+                fi
+                ;;
+            3)  # Restart Samba
+                systemctl restart samba
+                sleep 1
+                if systemctl is-active --quiet samba; then
+                    PROCS=$(ps aux | grep '[s]amba' | awk '{print $1, $2, $11}' | head -20)
+                    dialog --title "Samba Restarted" --msgbox "Samba restarted successfully.\n\nRunning Processes:\n$PROCS" 20 70
+                else
+                    dialog --msgbox "Failed to restart Samba!" 7 50
+                fi
+                ;;
+            4|"" )
+                break
+                ;;
+            *)
+                dialog --msgbox "Invalid option selected." 7 50
+                ;;
+        esac
+    done
+}
+#-------------------------------------------
+# Function: View Samba Update Log
+#-------------------------------------------
+samba_update_log() {
+    LOG_FILE="/var/log/dnf-smb-mon.log"
+
+    # Check if log file exists
+    if [ ! -f "$LOG_FILE" ]; then
+        dialog --msgbox "Log file not found at $LOG_FILE" 7 50
+        return
+    fi
+
+    # Display log in scrollable dialog textbox
+    dialog --title "Samba Service DNF Update Log" --textbox "$LOG_FILE" 30 120
+}
+
+#----------------------------
+# Main Dialog Menu
+#----------------------------
+while true; do
+    CHOICE=$(dialog --title "Samba Management" \
+                    --menu "Select an option:" 20 60 6 \
+                    1 "Edit Samba Configuration" \
+                    2 "Check Samba Status" \
+                    3 "Start/Stop/Restart Samba Service" \
+                    4 "Samba Repo Sync Log" \
+                    5 "Samba Package Rebuild/Update" \
+                    6 "Exit" \
+                    3>&1 1>&2 2>&3 3>&-)
+
+    case "$CHOICE" in
+        1) samba_edit_config ;;
+        2) samba_status ;;
+        3) samba_service_control ;;
+        4) samba_update_log ;;
+        5) clear & /usr/bin/samba-dnf-pkg-update ;;
+        6|"" ) clear; exit 0 ;;
+        *) dialog --msgbox "Invalid option selected." 7 50 ;;
     esac
 done
-clear # clear after user pressed Cancel
