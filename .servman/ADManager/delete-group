@@ -1,30 +1,62 @@
 #!/bin/bash
 TEXTRESET=$(tput sgr0)
 RED=$(tput setaf 1)
-YELLOW=$(tput setaf 3)
 GREEN=$(tput setaf 2)
 USER=$(whoami)
 
-#Checking for user permissions
-if [ "$USER" = "root" ]; then
-  echo " "
-else
-  echo ${RED}"This program must be run as root ${TEXTRESET}"
-  echo "Exiting"
+# Temporary file
+TMP_FILE=$(mktemp)
+trap 'rm -f "$TMP_FILE"' EXIT
+
+# --- Check root permissions ---
+if [ "$USER" != "root" ]; then
+    echo "${RED}This program must be run as root${TEXTRESET}"
+    exit 1
 fi
-clear
-cat <<EOF
-${GREEN}Active Directory Management${TEXTRESET}
-${GREEN}Delete a Group ${TEXTRESET}
 
-EOF
-samba-tool group list | column -c 100
-read -p "Please provide the Name of the group to delete : " GROUPNAME
+# --- Write group list to file directly ---
+samba-tool group list > "$TMP_FILE"
 
-samba-tool group delete "${GROUPNAME}"
+if [ ! -s "$TMP_FILE" ]; then
+    dialog --msgbox "No groups found in Active Directory." 7 50
+    exit 0
+fi
 
-echo ${GREEN}"Current Group List${TEXTRESET}"
-echo " "
-samba-tool group list | column -c 100
-echo " "
-read -p "Press Any Key"
+while true; do
+    # --- Build choices from file ---
+    CHOICES=()
+    while IFS= read -r group; do
+        CHOICES+=("$group" "")
+    done < "$TMP_FILE"
+
+    # --- Select group ---
+    SELECTED_GROUP=$(dialog --clear --title "Delete AD Group" \
+        --menu "Select a group to delete (ESC to exit):" 20 70 15 \
+        "${CHOICES[@]}" \
+        3>&1 1>&2 2>&3)
+
+    # User pressed ESC or Cancel
+    [ $? -ne 0 ] && exit 0
+
+    # --- Confirm deletion ---
+    dialog --yesno "Are you sure you want to delete the group:\n\n'$SELECTED_GROUP'?" 8 50
+    if [ $? -eq 0 ]; then
+        DELETE_OUTPUT=$(samba-tool group delete "$SELECTED_GROUP" 2>&1)
+        EXIT_CODE=$?
+
+        if [ $EXIT_CODE -eq 0 ]; then
+            dialog --msgbox "Group '$SELECTED_GROUP' has been deleted successfully." 7 50
+        else
+            echo "$DELETE_OUTPUT" > "$TMP_FILE"
+            dialog --title "Error Deleting Group" --textbox "$TMP_FILE" 20 70
+        fi
+    fi
+
+    # --- Refresh group list after deletion ---
+    samba-tool group list > "$TMP_FILE"
+
+    if [ ! -s "$TMP_FILE" ]; then
+        dialog --msgbox "No more groups left in Active Directory." 7 50
+        exit 0
+    fi
+done
