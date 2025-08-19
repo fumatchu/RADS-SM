@@ -1,37 +1,86 @@
 #!/bin/bash
+
 TEXTRESET=$(tput sgr0)
 RED=$(tput setaf 1)
-YELLOW=$(tput setaf 3)
 GREEN=$(tput setaf 2)
 USER=$(whoami)
 
-#Checking for user permissions
-if [ "$USER" = "root" ]; then
-  echo " "
-else
-  echo ${RED}"This program must be run as root ${TEXTRESET}"
-  echo "Exiting"
+# Temporary file
+TMP_FILE=$(mktemp)
+trap 'rm -f "$TMP_FILE"' EXIT
+
+# --- Check root permissions ---
+if [ "$USER" != "root" ]; then
+    echo "${RED}This program must be run as root${TEXTRESET}"
+    exit 1
 fi
-clear
-cat <<EOF
-${GREEN}Active Directory Management${TEXTRESET}
-${GREEN}Move a User to Group${TEXTRESET}
-EOF
 
-samba-tool group list | column -c 100
-read -p "Please provide the Name of the group to use : " GROUPNAME
+# --- Fetch Groups ---
+samba-tool group list > "$TMP_FILE"
+if [ ! -s "$TMP_FILE" ]; then
+    dialog --msgbox "No groups found in Active Directory." 7 50
+    exit 0
+fi
 
-clear
+# --- Select a group ---
+CHOICES=()
+while IFS= read -r group; do
+    CHOICES+=("$group" "")
+done < "$TMP_FILE"
 
-samba-tool user list | column -c 100
+GROUP=$(dialog --clear --title "Select AD Group" \
+    --menu "Select the group to add users to (ESC to cancel):" 20 70 15 \
+    "${CHOICES[@]}" \
+    3>&1 1>&2 2>&3)
 
-read -p "Please provide the user you want to add to the group: " ADUSER
+[ $? -ne 0 ] && exit 0
 
-samba-tool group addmembers "$GROUPNAME" "$ADUSER"
+# --- Fetch Users ---
+samba-tool user list > "$TMP_FILE"
+if [ ! -s "$TMP_FILE" ]; then
+    dialog --msgbox "No users found in Active Directory." 7 50
+    exit 0
+fi
 
-echo " "
-echo ${GREEN}"This is the users updated Group Membership:${TEXTRESET}"
-samba-tool user show $ADUSER | grep memberOf:
-echo ${GREEN}"This is the Groups Members${TEXTRESET}"
-samba-tool group show "$GROUPNAME"
-read -p "Press Any Key"
+# --- Build user checklist ---
+CHECKLIST=()
+while IFS= read -r user; do
+    CHECKLIST+=("$user" "" off)
+done < "$TMP_FILE"
+
+USERS=$(dialog --clear --title "Select Users" \
+    --checklist "Select users to add to '$GROUP':" 20 70 15 \
+    "${CHECKLIST[@]}" \
+    3>&1 1>&2 2>&3)
+
+[ $? -ne 0 ] && exit 0
+
+# --- Format user selection ---
+USERS_LIST=$(echo "$USERS" | tr -d '"')  # Remove quotes from dialog output
+
+# --- Confirm addition ---
+dialog --yesno "You are about to add the following user(s) to group '$GROUP':\n\n$USERS_LIST\n\nProceed?" 12 70
+if [ $? -ne 0 ]; then
+    dialog --msgbox "Operation canceled." 6 40
+    exit 0
+fi
+
+# --- Add users to group ---
+for u in $USERS_LIST; do
+    samba-tool group addmembers "$GROUP" "$u"
+done
+
+# --- Show updated membership ---
+OUTPUT=$(mktemp)
+trap 'rm -f "$TMP_FILE" "$OUTPUT"' EXIT
+
+echo "Group Members Updated:" > "$OUTPUT"
+samba-tool group show "$GROUP" >> "$OUTPUT"
+
+for u in $USERS_LIST; do
+    echo "" >> "$OUTPUT"
+    echo "User '$u' Memberships:" >> "$OUTPUT"
+    samba-tool user show "$u" | grep memberOf: >> "$OUTPUT"
+done
+
+dialog --title "Update Complete" --textbox "$OUTPUT" 25 80
