@@ -1,23 +1,73 @@
 #!/bin/bash
+
 TEXTRESET=$(tput sgr0)
 RED=$(tput setaf 1)
-YELLOW=$(tput setaf 3)
 GREEN=$(tput setaf 2)
-USER=$(whoami)
 
-#Checking for user permissions
-if [ "$USER" = "root" ]; then
-  echo " "
-else
-  echo ${RED}"This program must be run as root ${TEXTRESET}"
-  echo "Exiting"
-fi
-clear
-cat <<EOF
-${GREEN}Active Directory Management${TEXTRESET}
-${GREEN}Show All Users${TEXTRESET}
-EOF
+TMP_FILE=$(mktemp)
+trap 'rm -f "$TMP_FILE"' EXIT
 
-samba-tool user list | column -c 100
+# === Detect Domain Controller ===
+detect_dc() {
+    local dc
+    dc=$(hostname -f)
+    if ! ping -c1 -W1 "$dc" &>/dev/null; then
+        realm=$(samba-tool testparm --parameter-name="realm" 2>/dev/null | awk '{print $1}')
+        dc=$(host -t A "$realm" | awk '/has address/ {print $NF; exit}')
+    fi
+    echo "$dc"
+}
 
-read -p "Press Any Key"
+# === Prompt for Admin Password ===
+prompt_admin_password() {
+    while true; do
+        ADMIN_PASS=$(dialog --insecure --passwordbox "Enter the Samba Administrator password:" 8 50 3>&1 1>&2 2>&3) || exit 1
+        if samba-tool user list -H ldap://"$DC" -U "Administrator%$ADMIN_PASS" --option="password server = *" &>/dev/null; then
+            break
+        else
+            dialog --msgbox "Authentication failed. Please try again." 7 50
+        fi
+    done
+}
+
+# === Get all users ===
+get_all_users() {
+    mapfile -t USERS < <(samba-tool user list -H ldap://"$DC" -U "Administrator%$ADMIN_PASS" --option="password server = *" 2>/dev/null | sort)
+    if [ ${#USERS[@]} -eq 0 ]; then
+        dialog --msgbox "No users found in Active Directory." 7 50
+        exit 0
+    fi
+}
+
+# === Show user details ===
+show_user_details() {
+    local user="$1"
+    samba-tool user show "$user" -H ldap://"$DC" -U "Administrator%$ADMIN_PASS" --option="password server = *" > "$TMP_FILE" 2>&1
+    dialog --title "Details for $user" --textbox "$TMP_FILE" 20 70
+}
+
+# === Main menu to select users ===
+user_menu() {
+    while true; do
+        get_all_users
+
+        # Build dialog menu choices
+        MENU_CHOICES=()
+        for user in "${USERS[@]}"; do
+            MENU_CHOICES+=("$user" "")
+        done
+
+        SELECTED_USER=$(dialog --clear --title "Select an Active Directory User" \
+            --menu "Select a user to view details:" 20 70 15 \
+            "${MENU_CHOICES[@]}" \
+            3>&1 1>&2 2>&3) || break
+
+        # Show selected user's details
+        show_user_details "$SELECTED_USER"
+    done
+}
+
+# === Main ===
+DC=$(detect_dc)
+prompt_admin_password
+user_menu
