@@ -1,6 +1,8 @@
 #!/bin/bash
 # ===============================
 # Samba DC Remote Backup Script (No Local Retention)
+# Baseline UX: live per-file stream + md5 textbox
+# Preserves ownership, ACLs, xattrs via rsync -aAX
 # ===============================
 
 TEXTRESET=$(tput sgr0)
@@ -8,8 +10,7 @@ RED=$(tput setaf 1)
 YELLOW=$(tput setaf 3)
 GREEN=$(tput setaf 2)
 
-USER=$(whoami)
-if [ "$USER" != "root" ]; then
+if [ "$(id -u)" -ne 0 ]; then
     echo -e "${RED}This script must be run as root!${TEXTRESET}"
     exit 1
 fi
@@ -20,19 +21,15 @@ TEMP_BASE=$(mktemp -d -p /tmp samba-dc-backup.XXXXXX)
 BACKUP_PATH="$TEMP_BASE/${FQDN}_backup-$DATE"
 mkdir -p "$BACKUP_PATH"
 
-TEMP_PIPE=$(mktemp -u)
-mkfifo "$TEMP_PIPE"
-
 # ----------------------------
 # --- Dialog: Warn about downtime ---
 # ----------------------------
 dialog --title "Attention!" \
 --yesno "The Samba AD DC service will be stopped during the backup.\nThe domain will be offline temporarily.\n\nDo you want to continue?" 10 100
-DIALOG_EXIT=$?
-[[ $DIALOG_EXIT -ne 0 ]] && clear && exit 0
+[[ $? -ne 0 ]] && clear && exit 0
 
 # ----------------------------
-# --- Prompt for Remote SCP Info ---
+# --- Prompt for Remote SSH Info ---
 # ----------------------------
 REMOTE_HOST=$(dialog --title "Remote Host" --inputbox "Enter SSH server IP or hostname:" 8 60 3>&1 1>&2 2>&3) || exit 0
 REMOTE_USER=$(dialog --title "Remote User" --inputbox "Enter SSH username:" 8 60 "" 3>&1 1>&2 2>&3) || exit 0
@@ -45,16 +42,14 @@ REMOTE_PASS=$(dialog --insecure --title "SSH Password" --passwordbox "Enter SSH 
 TEST_FILE=".samba_backup_test_$(date +%s)"
 dialog --title "Testing SSH Access" --infobox "Checking remote login and write permission..." 6 60
 
-# Accept host key
+mkdir -p ~/.ssh && chmod 700 ~/.ssh
 ssh-keyscan -H "$REMOTE_HOST" >> ~/.ssh/known_hosts 2>/dev/null
 
-# Ensure sshpass is available
 command -v sshpass >/dev/null 2>&1 || {
     echo -e "${YELLOW}Installing sshpass...${TEXTRESET}"
     dnf -y install sshpass >/dev/null 2>&1 || yum -y install sshpass
 }
 
-# Check login & write access
 sshpass -p "$REMOTE_PASS" ssh -o StrictHostKeyChecking=no "$REMOTE_USER@$REMOTE_HOST" \
 "mkdir -p '$REMOTE_DIR' && touch '$REMOTE_DIR/$TEST_FILE' && rm -f '$REMOTE_DIR/$TEST_FILE'" 2>/tmp/ssh_test_error
 
@@ -69,52 +64,97 @@ fi
 rm -f /tmp/ssh_test_error
 
 # ----------------------------
+# --- Record OS & Samba versions (for restore checks) ---
+# ----------------------------
+OS_PRETTY="unknown"; OS_ID=""; OS_VERSION_ID=""
+if [[ -f /etc/os-release ]]; then
+  OS_PRETTY=$(grep '^PRETTY_NAME=' /etc/os-release | cut -d= -f2- | tr -d '"')
+  OS_ID=$(grep '^ID=' /etc/os-release | cut -d= -f2- | tr -d '"')
+  OS_VERSION_ID=$(grep '^VERSION_ID=' /etc/os-release | cut -d= -f2- | tr -d '"')
+fi
+KERNEL="$(uname -r)"
+{
+  echo "PRETTY_NAME: ${OS_PRETTY}"
+  [[ -n "$OS_ID" ]] && echo "ID: ${OS_ID}"
+  [[ -n "$OS_VERSION_ID" ]] && echo "VERSION_ID: ${OS_VERSION_ID}"
+  echo "KERNEL: ${KERNEL}"
+} > "$BACKUP_PATH/os_version.txt"
+
+SAMBA_VER="unknown"
+if command -v samba >/dev/null 2>&1; then
+  SAMBA_VER="$(samba -V 2>/dev/null)"
+elif command -v smbd >/dev/null 2>&1; then
+  SAMBA_VER="$(smbd -V 2>/dev/null)"
+fi
+PKG_VER=""
+if command -v rpm >/dev/null 2>&1; then
+  PKG_VER="$(rpm -q samba 2>/dev/null || true)"
+elif command -v dpkg-query >/dev/null 2>&1; then
+  PKG_VER="$(dpkg-query -W -f='${Package} ${Version}\n' samba 2>/dev/null || true)"
+fi
+{
+  echo "Samba: ${SAMBA_VER}"
+  [[ -n "$PKG_VER" ]] && echo "Package: ${PKG_VER}"
+} > "$BACKUP_PATH/samba_version.txt"
+
+# ----------------------------
 # --- Stop Samba Service ---
 # ----------------------------
-dialog --title "Stopping Samba" --infobox "Stopping samba-ad-dc..." 5 50
-systemctl stop samba-ad-dc
+dialog --title "Stopping Samba" --infobox "Stopping samba..." 5 50
+systemctl stop samba
 
 # ----------------------------
-# --- Perform Backup with Progress ---
+# --- Live file list while backing up (rsync -aAX) ---
 # ----------------------------
 (
-TOTAL_ITEMS=$(find /etc/samba /var/lib/samba/private /var/lib/samba/sysvol /var/lib/samba/locks /var/lib/samba/ldap -type f | wc -l)
-COUNT=0
-echo "0" > "$TEMP_PIPE"
-for FILE in $(find /etc/samba /var/lib/samba/private /var/lib/samba/sysvol /var/lib/samba/locks /var/lib/samba/ldap -type f); do
-    REL_PATH=$(realpath --relative-to=/ "$FILE")
+  INCLUDE_PATHS=(
+    /etc/samba
+    /etc/krb5.conf
+    /etc/nsswitch.conf
+    /var/lib/samba
+    /var/lib/samba/private
+    /var/lib/samba/sysvol
+    /var/lib/samba/ntp_signd
+    /var/lib/samba/bind-dns
+    /etc/named.conf
+    /var/named
+  )
+
+  echo "Recorded OS info -> $BACKUP_PATH/os_version.txt"
+  echo "Recorded Samba info -> $BACKUP_PATH/samba_version.txt"
+  echo "-----------------------------------------------"
+
+  find "${INCLUDE_PATHS[@]}" -type f 2>/dev/null | while read -r FILE; do
+    REL_PATH="${FILE#/}"
     DEST="$BACKUP_PATH/$REL_PATH"
     mkdir -p "$(dirname "$DEST")"
-    cp -a "$FILE" "$DEST"
-    ((COUNT++))
-    PERCENT=$(( COUNT * 100 / TOTAL_ITEMS ))
-    echo "$PERCENT" > "$TEMP_PIPE"
-    echo "XXX" > "$TEMP_PIPE"
-    echo "Backing up: $REL_PATH" > "$TEMP_PIPE"
-    echo "XXX" > "$TEMP_PIPE"
-done
-) &
-
-dialog --backtitle "Samba DC Backup" --title "Backup Progress" --gauge "Initializing..." 10 60 0 < "$TEMP_PIPE"
-rm -f "$TEMP_PIPE"
+    echo "Backing up: $REL_PATH"
+    rsync -aAX -- "$FILE" "$DEST"
+  done
+) | dialog --title "Backing up files (rsync -aAX)" --programbox 22 100
 
 # ----------------------------
 # --- Start Samba Service ---
 # ----------------------------
-dialog --title "Starting Samba" --infobox "Starting samba-ad-dc..." 5 50
-systemctl start samba-ad-dc
+dialog --title "Starting Samba" --infobox "Starting samba..." 5 50
+systemctl start samba
 
 # ----------------------------
-# --- MD5 Checksum ---
+# --- MD5 checksums + show list ---
 # ----------------------------
-dialog --title "Generating MD5" --infobox "Generating MD5 checksums..." 5 50
-(cd "$BACKUP_PATH" && md5sum $(find . -type f) > "$BACKUP_PATH/md5sums.txt")
+dialog --title "Generating MD5" --infobox "Computing checksums..." 5 50
+(
+  cd "$BACKUP_PATH"
+  find . -type f -print0 | xargs -0 md5sum > "$BACKUP_PATH/md5sums.txt"
+)
+
+dialog --title "Backed-up files (with checksums)" \
+  --textbox "$BACKUP_PATH/md5sums.txt" 24 100
 
 # ----------------------------
 # --- Transfer via SCP ---
 # ----------------------------
 dialog --title "Transferring Backup" --infobox "Sending backup to $REMOTE_USER@$REMOTE_HOST:$REMOTE_DIR ..." 7 60
-
 sshpass -p "$REMOTE_PASS" scp -o StrictHostKeyChecking=no -r "$BACKUP_PATH" "$REMOTE_USER@$REMOTE_HOST:$REMOTE_DIR" 2>/tmp/scp_error
 
 if [[ $? -eq 0 ]]; then
@@ -132,6 +172,16 @@ rm -f /tmp/scp_error
 # ----------------------------
 # --- Completion Message ---
 # ----------------------------
-dialog --title "Backup Complete" --msgbox "Backup completed and transferred successfully.\n\nRemote path: $REMOTE_USER@$REMOTE_HOST:$REMOTE_DIR" 10 100
+dialog --title "Backup Complete" --msgbox "Backup completed and transferred successfully.
+
+Remote: $REMOTE_USER@$REMOTE_HOST:$REMOTE_DIR
+
+Version metadata included:
+  - os_version.txt
+  - samba_version.txt
+
+Checksums file on remote inside the backup folder:
+  - md5sums.txt" 14 90
+
 clear
 exit 0
