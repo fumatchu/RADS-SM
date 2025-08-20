@@ -1,48 +1,68 @@
 #!/bin/bash
-TEXTRESET=$(tput sgr0)
-RED=$(tput setaf 1)
-YELLOW=$(tput setaf 3)
-GREEN=$(tput setaf 2)
-USER=$(whoami)
 
-#Checking for user permissions
-if [ "$USER" = "root" ]; then
-  echo " "
-else
-  echo ${RED}"This program must be run as root ${TEXTRESET}"
-  echo "Exiting"
+# ========= DIALOG-ENHANCED SERVER MANAGEMENT UPDATE =========
+
+# --- Check if running as root ---
+if [[ "$(id -u)" -ne 0 ]]; then
+    dialog --title "Permission Denied" --msgbox "This program must be run as root.\nExiting..." 8 50
+    clear
+    exit 1
 fi
-clear
-cat <<EOF
-${GREEN}Server Management${TEXTRESET}
-${GREEN}Update Server Management${TEXTRESET}
 
-This will download and install the latest version of Server Management from Github
+# --- Intro Message ---
+dialog --title "Server Management Update" --msgbox \
+"Server Management (SM-GUI) will be updated to the latest version from GitHub.
 
-EOF
+This will download and install the latest installer script." 10 100
 
-while true; do
-  read -p "Would you like to update now? (y/n) " yn
-  case $yn in
-  [yY])
-    echo ${GREEN}"Downloading and installing the latest version of Server Management${TEXTRESET}"
-    cd ~ && cd -
-    sed -i '/server-manager/d' /root/.bash_profile
-    cd /root/
-    dnf -y install wget
-    wget https://raw.githubusercontent.com/fumatchu/RADS-SM/main/RADS-SMInstaller.sh
-    chmod 700 ./RADS-SMInstaller.sh
-    /root/RADS-SMInstaller.sh
-    cd ~ && cd -
+# --- Confirmation Prompt ---
+dialog --title "Update SM-GUI?" --yesno "Do you want to update Server Management now?" 7 60
+CONFIRM=$?
+
+if [[ $CONFIRM -eq 0 ]]; then
+    # --- Progress Dialog with Gauge ---
+    PIPE=$(mktemp -u)
+    mkfifo "$PIPE"
+    dialog --backtitle "Server Management Update" \
+           --title "Updating..." \
+           --gauge "Preparing update..." 10 60 0 <"$PIPE" &
+    exec 3>"$PIPE"
+
+    (
+        echo "10" >"$PIPE"; echo "XXX" >"$PIPE"; echo "Cleaning old autostart entry..." >"$PIPE"; echo "XXX" >"$PIPE"
+        sed -i '/server-manager/d' /root/.bash_profile
+        sleep 0.5
+
+        echo "30" >"$PIPE"; echo "XXX" >"$PIPE"; echo "Installing wget..." >"$PIPE"; echo "XXX" >"$PIPE"
+        dnf -y install wget >/dev/null 2>&1
+        sleep 0.5
+
+        echo "60" >"$PIPE"; echo "XXX" >"$PIPE"; echo "Downloading installer..." >"$PIPE"; echo "XXX" >"$PIPE"
+        cd /root/
+        wget -q https://raw.githubusercontent.com/fumatchu/RADS-SM/main/RADS-SMInstaller.sh
+        chmod 700 ./RADS-SMInstaller.sh
+        sleep 0.5
+
+        echo "80" >"$PIPE"; echo "XXX" >"$PIPE"; echo "Running installer..." >"$PIPE"; echo "XXX" >"$PIPE"
+        /root/RADS-SMInstaller.sh >/dev/null 2>&1
+        sleep 0.5
+
+        echo "100" >"$PIPE"; echo "XXX" >"$PIPE"; echo "Update complete!" >"$PIPE"; echo "XXX" >"$PIPE"
+    )
+
+    exec 3>&-
+    rm -f "$PIPE"
+
+    # --- Completion Message ---
+    dialog --title "Update Complete" --msgbox "Server Management has been updated to the latest version." 7 60
+
+    # --- Launch SM-GUI ---
     server-manager
-    exit
-    break
-    ;;
-  [nN])
-    echo ${RED}"Cancelling update${TEXTRESET}"
-    sleep 1
-    exit
-    ;;
-  *) echo invalid response ;;
-  esac
-done
+
+    clear
+    exit 0
+else
+    dialog --title "Cancelled" --msgbox "Update cancelled. No changes made." 6 50
+    clear
+    exit 0
+fi
