@@ -1,7 +1,5 @@
 #!/bin/bash
 
-# ========= DIALOG-ENHANCED SERVER MANAGEMENT ENABLE =========
-
 # --- Check if running as root ---
 if [[ "$(id -u)" -ne 0 ]]; then
     dialog --title "Permission Denied" --msgbox "This program must be run as root.\nExiting..." 8 50
