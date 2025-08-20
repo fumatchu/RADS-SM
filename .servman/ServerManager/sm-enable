@@ -1,38 +1,38 @@
 #!/bin/bash
-TEXTRESET=$(tput sgr0)
-RED=$(tput setaf 1)
-YELLOW=$(tput setaf 3)
-GREEN=$(tput setaf 2)
-USER=$(whoami)
 
-#Checking for user permissions
-if [ "$USER" = "root" ]; then
-   echo " "
-else
-   echo ${RED}"This program must be run as root ${TEXTRESET}"
-   echo "Exiting"
+# ========= DIALOG-ENHANCED SERVER MANAGEMENT ENABLE =========
+
+# --- Check if running as root ---
+if [[ "$(id -u)" -ne 0 ]]; then
+    dialog --title "Permission Denied" --msgbox "This program must be run as root.\nExiting..." 8 50
+    clear
+    exit 1
 fi
-clear
-cat <<EOF
-${GREEN}Server Management${TEXTRESET}
-${GREEN}Server Management On-Boot${TEXTRESET}
-EOF
 
-while true; do
-   read -p "Do you want to enable System Management GUI Automatically? (y/n) " yn
-   case $yn in
-   [yY])
-      echo "/usr/bin/server-manager" >>/root/.bash_profile
-      echo ${GREEN}"Added${TEXTRESET}"
-      sleep 1
-      break
-      ;;
-   [nN])
-      echo ${RED}"Cancelled${TEXTRESET}"
-      sleep 1
-      exit
-      ;;
-   *) echo invalid response ;;
-   esac
-done
-exit
+# --- Introduction Message ---
+dialog --title "Server Management Enable" --msgbox \
+"Server Management (SM-GUI) can be started automatically at root login.
+
+This will add an autostart entry to /root/.bash_profile." 10 100
+
+# --- Confirmation Prompt ---
+dialog --title "Enable SM on Boot?" --yesno \
+"Do you want to enable Server Management on boot?" 7 60
+
+CONFIRM=$?
+
+if [[ $CONFIRM -eq 0 ]]; then
+    # --- Check if entry already exists ---
+    if grep -q '/usr/bin/server-manager' /root/.bash_profile; then
+        dialog --title "Info" --msgbox "Server Management is already set to autostart." 6 50
+    else
+        echo "/usr/bin/server-manager" >> /root/.bash_profile
+        dialog --title "Success" --msgbox "Server Management added to autostart." 6 50
+    fi
+    clear
+    exit 0
+else
+    dialog --title "Cancelled" --msgbox "Operation cancelled. No changes made." 6 50
+    clear
+    exit 0
+fi
