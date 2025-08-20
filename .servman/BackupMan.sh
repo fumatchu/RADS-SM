@@ -11,8 +11,7 @@ fi
 
 items=(1 "Backup Local"
        2 "Backup Remote"
-       3 "Backup Local AND Remote"
-       4 "Restore Backup"
+       3 "Restore Backup"
 )
 
 while choice=$(dialog --title "$TITLE" \
@@ -22,8 +21,7 @@ while choice=$(dialog --title "$TITLE" \
     case $choice in
     1) /root/.servman/BackupMan/backup-local.sh ;;
     2) /root/.servman/BackupMan/backup-remote.sh ;;
-    3) /root/.servman/BackupMan/backup-local-remote.sh ;;
-    4) /root/.servman/BackupMan/restore.sh ;;
+    3) /root/.servman/BackupMan/restore.sh ;;
     esac
 done
 clear # clear after user pressed Cancel
