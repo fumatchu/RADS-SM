@@ -1,43 +1,38 @@
 #!/bin/bash
-TEXTRESET=$(tput sgr0)
-RED=$(tput setaf 1)
-YELLOW=$(tput setaf 3)
-GREEN=$(tput setaf 2)
-USER=$(whoami)
 
-#Checking for user permissions
-if [ "$USER" = "root" ]; then
-   echo " "
-else
-   echo ${RED}"This program must be run as root ${TEXTRESET}"
-   echo "Exiting"
+# ========= DIALOG-ENHANCED SERVER MANAGEMENT REMOVE =========
+
+# --- Check if running as root ---
+if [[ "$(id -u)" -ne 0 ]]; then
+    dialog --title "Permission Denied" --msgbox "This program must be run as root.\nExiting..." 8 50
+    clear
+    exit 1
 fi
-clear
-cat <<EOF
-${GREEN}Server Management${TEXTRESET}
-${GREEN}Remove Server Management On-Boot${TEXTRESET}
 
+# --- Introduction Message ---
+dialog --title "Server Management Removal" --msgbox \
+"Server Management (SM-GUI) will be removed from starting automatically at root login.
 
-You are removing System Management from autmotcially starting when logging in as root.
-You can still start SM-GUI at any time by typing ${YELLOW}server-manager${TEXTRESET} in the CLI.
+You can still start it anytime by typing 'server-manager' in the CLI." 10 100
 
-EOF
+# --- Confirmation Prompt ---
+dialog --title "Disable SM on Boot?" --yesno \
+"Do you want to disable Server Management on boot?" 7 60
 
-while true; do
-   read -p "Do you want to disable SM on Boot? (y/n) " yn
-   case $yn in
-   [yY])
-      sed -i '/server-manager/d' /root/.bash_profile
-      echo ${RED}"Removed the Entry${TEXTRESET}"
-      sleep 1
-      break
-      ;;
-   [nN])
-      echo ${RED}"Cancelled${TEXTRESET}"
-      sleep 1
-      exit
-      ;;
-   *) echo invalid response ;;
-   esac
-done
-exit
+CONFIRM=$?
+
+if [[ $CONFIRM -eq 0 ]]; then
+    # --- Remove entry from .bash_profile ---
+    if grep -q 'server-manager' /root/.bash_profile; then
+        sed -i '/server-manager/d' /root/.bash_profile
+        dialog --title "Success" --msgbox "Server Management removed from autostart." 6 50
+    else
+        dialog --title "Info" --msgbox "No autostart entry found. Nothing to remove." 6 50
+    fi
+    clear
+    exit 0
+else
+    dialog --title "Cancelled" --msgbox "Operation cancelled. No changes made." 6 50
+    clear
+    exit 0
+fi
