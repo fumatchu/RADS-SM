@@ -47,9 +47,10 @@ items=(1 "Active Directory Management"
     2 "DHCP Management"
     3 "Samba Service Management"
     4 "System Management"
-    5 "Server Management Options"
-    6 "System Tools"
-    7 "Welcome to Server Manager"
+    5 "Backup/Restore"
+    6 "Server Management Options"
+    7 "System Tools"
+    8 "Welcome to Server Manager"
 )
 
 while choice=$(dialog --title "$TITLE" \
@@ -57,13 +58,14 @@ while choice=$(dialog --title "$TITLE" \
     --menu "Please select" 20 40 3 "${items[@]}" \
     2>&1 >/dev/tty); do
     case $choice in
-    1) /root/.servman/ADMan ;;   # some action on 1
-    2) /root/.servman/DHCPMan ;; # some action on 2
+    1) /root/.servman/ADMan ;;  
+    2) /root/.servman/DHCPMan ;; 
     3) /root/.servman/SambaMan ;;
-    4) /root/.servman/SYSMan ;; # some action on other
-    5) /root/.servman/SERVMan;;
-    6) /root/.servman/TOOLMan;;
-    7) /root/.servman/welcome.readme | more;;
+    4) /root/.servman/SYSMan ;; 
+    5) /root/.servman/BackupMan.sh ;;
+    6) /root/.servman/SERVMan;;
+    7) /root/.servman/TOOLMan;;
+    8) /root/.servman/welcome.readme | more;;
     esac
 done
 clear # clear after user pressed Cancel
