@@ -11,7 +11,7 @@ fi
 
 items=(1 "Backup Local"
        2 "Backup Remote"
-       3 "Restore Backup"
+       3 "Restore"
 )
 
 while choice=$(dialog --title "$TITLE" \
