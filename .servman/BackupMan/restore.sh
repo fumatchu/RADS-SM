@@ -261,7 +261,7 @@ compare_versions(){
     fi
   } > "$REPORT"
 
-  dialog --title "Version Validation Results" --textbox "$REPORT" 26 100
+  dialog --title "Version Validation Results" --textbox "$REPORT" 26 120
 
   local PROCEED=1
   if [[ "$OS_MATCH" != "PASS" || "$SAMBA_MATCH" != "PASS" ]]; then
