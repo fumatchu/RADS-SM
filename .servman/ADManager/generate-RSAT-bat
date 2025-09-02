@@ -1,65 +1,58 @@
 #!/bin/bash
-TEXTRESET=$(tput sgr0)
-RED=$(tput setaf 1)
-YELLOW=$(tput setaf 3)
-GREEN=$(tput setaf 2)
-USER=$(whoami)
-FQDN=$(hostname)
-ADDOMAIN=$(hostname | sed 's/^[^.:]*[.:]//' | cut -d. -f1 | sed -e 's/\(.*\)/\U\1/')
+set -euo pipefail
 
-#Checking for user permissions
-if [ "$USER" = "root" ]; then
-    echo " "
-else
-    echo ${RED}"This program must be run as root ${TEXTRESET}"
-    echo "Exiting"
-fi
-clear
+# === Config ===
+OUT_DIR="/root/RSAT-GENERATED-BAT-FILE"
+OUT_FILE="$OUT_DIR/rsat-admin.bat"
 
-cat <<EOF
-${GREEN}Active Directory Management${TEXTRESET}
-${GREEN}Generate RSAT Batch file for this domain${TEXTRESET}
+FQDN="$(hostname -f 2>/dev/null || hostname)"
+ADDOMAIN="$(hostname | sed 's/^[^.:]*[.:]//' | cut -d. -f1 | sed -e 's/\(.*\)/\U\1/')"
 
-
-This will generate a bat file to allow you to manage the DC
-From an unjoined (NON-DOMAIN) computer.
-
-
-If the computer you are going to manage it on is NOT in the domain:
-     Adjust your DNS on your laptop/device to point to the AD server for DNS resolution
-
-This script will create a file for you in the root directory.
-This bat file will allow you to login into the domain and load mmc via the "runas" as an administrator of the domain.
-
-From there, you can add the snap-ins and manage the Domain Controller
-
-In order to download the file from this DC, you can:
-
-        Use cockpit and the navigator plug-in (not installed)
-
-        Or you can use winSCP or some other derivative of SCP to allow this to happen.
-
-If you are familiar with cockpit, we can install this (Navigator) for you if you like.
-If you choose not to install cockpit-navigator and use an SCP derivative, either way,
-The bat file will be in the root directory after answering yes or no to the following question
-
-EOF
-
-read -r -p "Would you like to install cockpit-navigator for file system access through cockpit? [y/N]" -n 1
-echo # (optional) move to a new line
-if [[ "$REPLY" =~ ^[Yy]$ ]]; then
-
-    echo ${YELLOW}"Your cockpit instance can be accessed at ${FQDN}:9090"${TEXTRESET}
-    sleep 5
-    dnf -y install cockpit-navigator cockpit cockpit-storaged
-    systemctl enable cockpit.socket
-    systemctl start cockpit.socket
+# === Checks ===
+if [[ $EUID -ne 0 ]]; then
+  echo "This program must be run as root." >&2
+  exit 1
 fi
 
-mkdir /root/RSAT-GENERATED-BAT-FILE/
+if ! command -v dialog >/dev/null 2>&1; then
+  echo "'dialog' not found. Please install it first (dnf -y install dialog)."
+  exit 1
+fi
 
-cat <<EOF >/root/RSAT-GENERATED-BAT-FILE/rsat-admin.bat
+# === Intro text ===
+intro_text="Active Directory Management
+Generate an RSAT launch batch file for administering this domain from a non-domain-joined Windows machine.
 
+What this does:
+• Creates a batch file on this server at:
+  $OUT_FILE
+
+The batch launches MMC with 'Run as different user' using your AD admin.
+
+Before use on Windows:
+• Point your Windows device's DNS to this AD server.
+
+To get the file off this server:
+• Cockpit (https://${FQDN}:9090) – use the file browser
+• Or SCP/SFTP (e.g., WinSCP).
+"
+
+# === Dialog Flow ===
+dialog --title "RSAT Batch Generator" --msgbox "$intro_text" 20 78
+
+dialog --title "Proceed?" --yesno "Generate RSAT batch file now?\n\nServer: $FQDN\nAD short domain: $ADDOMAIN\n\nOutput: $OUT_FILE" 12 70
+if [[ $? -ne 0 ]]; then
+  clear
+  echo "Cancelled."
+  exit 1
+fi
+
+mkdir -p "$OUT_DIR"
+
+{
+  echo 0
+  sleep 0.1
+  cat > "$OUT_FILE" <<'BAT'
 @echo off
 :: BatchGotAdmin
 ::-------------------------------------
@@ -86,9 +79,18 @@ if '%errorlevel%' NEQ '0' (
     CD /D "%~dp0"
 ::--------------------------------------
 
-EOF
+BAT
+  echo 45
+  sleep 0.1
+  echo "runas /netonly /noprofile /u:${ADDOMAIN}\Administrator mmc.exe" >> "$OUT_FILE"
+  echo 90
+  sleep 0.1
+  chmod 0644 "$OUT_FILE"
+  echo 100
+  sleep 0.1
+} | dialog --title "Generating" --gauge "Creating RSAT batch file..." 8 60 0
 
-echo "runas /netonly /noprofile /u:${ADDOMAIN}\Administrator mmc.exe" >>/root/RSAT-GENERATED-BAT-FILE/rsat-admin.bat
-echo ${GREEN}"The file has been created and is in the directory:${TEXTRESET} ${YELLOW}/root/RSAT-GENERATED-BAT-FILE/${TEXTRESET}"
+msg="RSAT batch file generated!\n\nPath on this server:\n  $OUT_FILE\n\nAccess options:\n• Cockpit:  https://${FQDN}:9090  (file browser)\n• SCP/SFTP: use WinSCP or similar.\n\nOn Windows, double-click or right-click → Run as administrator."
+dialog --title "Success" --msgbox "$msg" 14 70
 
-read -p "Press Any Key"
+clear
