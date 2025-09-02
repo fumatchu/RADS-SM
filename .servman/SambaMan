@@ -141,19 +141,17 @@ while true; do
                     --menu "Select an option:" 20 60 6 \
                     1 "Edit Samba Configuration" \
                     2 "Check Samba Status" \
-                    3 "Start/Stop/Restart Samba Service" \
-                    4 "Samba Repo Sync Log" \
-                    5 "Samba Package Rebuild/Update" \
-                    6 "Exit" \
+                    3 "Samba Repo Sync Log" \
+                    4 "Samba Package Rebuild/Update" \
+                    5 "Exit" \
                     3>&1 1>&2 2>&3 3>&-)
 
     case "$CHOICE" in
         1) samba_edit_config ;;
         2) samba_status ;;
-        3) samba_service_control ;;
-        4) samba_update_log ;;
-        5) clear & /usr/bin/samba-dnf-pkg-update ;;
-        6|"" ) clear; exit 0 ;;
+        3) samba_update_log ;;
+        4) clear & /usr/bin/samba-dnf-pkg-update ;;
+        5|"" ) clear; exit 0 ;;
         *) dialog --msgbox "Invalid option selected." 7 50 ;;
     esac
 done
