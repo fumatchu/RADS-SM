@@ -1,17 +1,163 @@
 #!/bin/bash
-TEXTRESET=$(tput sgr0)
-RED=$(tput setaf 1)
-YELLOW=$(tput setaf 3)
-GREEN=$(tput setaf 2)
-USER=$(whoami)
+# Rocky Linux - dialog-driven nmtui wrapper with before/after snapshot + restart prompt
 
-#Checking for user permissions
-if [ "$USER" = "root" ]; then
-echo " "
-else
-  echo ${RED}"This program must be run as root ${TEXTRESET}"
-  echo "Exiting"
-fi
-clear
+set -euo pipefail
 
-nmtui
+DIALOG_BIN="${DIALOG_BIN:-dialog}"
+TEXTRESET=$(tput sgr0 || true)
+RED=$(tput setaf 1 || true)
+YELLOW=$(tput setaf 3 || true)
+GREEN=$(tput setaf 2 || true)
+
+# Predeclare temp vars so trap-safe under `set -u`
+TMP_BEFORE=""
+TMP_AFTER=""
+TMP_DIFF=""
+
+cleanup() {
+  # Use default expansions so unset/empty vars don't error with `set -u`
+  rm -f "${TMP_BEFORE:-}" "${TMP_AFTER:-}" "${TMP_DIFF:-}" 2>/dev/null || true
+}
+trap cleanup EXIT
+
+require_root() {
+  if [[ ${EUID:-$(id -u)} -ne 0 ]]; then
+    echo "${RED}This program must be run as root${TEXTRESET}" >&2
+    exit 1
+  fi
+}
+
+require_cmd() {
+  local cmd="$1" pretty="${2:-$1}"
+  if ! command -v "$cmd" >/dev/null 2>&1; then
+    echo "${RED}Missing dependency:${TEXTRESET} $pretty" >&2
+    echo "Install it and re-run. (e.g. dnf -y install $pretty)" >&2
+    exit 1
+  fi
+}
+
+nm_snapshot() {
+  local outfile="$1"
+  : > "$outfile"
+
+  mapfile -t CONS < <(nmcli -t -g NAME connection show | sort)
+
+  local FIELDS=(
+    connection.id
+    connection.uuid
+    connection.type
+    connection.interface-name
+    ipv4.method
+    ipv4.addresses
+    ipv4.gateway
+    ipv4.dns
+    ipv4.dns-search
+    ipv4.routes
+    ipv6.method
+    ipv6.addresses
+    ipv6.gateway
+    ipv6.dns
+    ipv6.dns-search
+    ipv6.routes
+    802-3-ethernet.mac-address
+    802-11-wireless.ssid
+    802-11-wireless.band
+    802-11-wireless.mode
+    proxy.method
+  )
+
+  for name in "${CONS[@]}"; do
+    {
+      echo "===== CONNECTION: ${name} ====="
+      nmcli -t -f "$(IFS=,; echo "${FIELDS[*]}")" connection show "$name" 2>/dev/null \
+        | awk -F: '{ if ($NF == "") $NF="(empty)"; print $0 }' \
+        | sort
+      echo
+    } >> "$outfile"
+  done
+
+  {
+    echo "===== RESOLVED-DNS ====="
+    if command -v resolvectl >/dev/null 2>&1; then
+      resolvectl status 2>/dev/null | sed -n '/Global/,/Link [0-9]/p' | sed '/Link [0-9]/,$d' \
+        | sed 's/[[:space:]]\+/ /g' | sed 's/^[[:space:]]*//'
+    fi
+    echo "--- /etc/resolv.conf ---"
+    if [[ -f /etc/resolv.conf ]]; then
+      sed -e 's/[[:space:]]\+/ /g' /etc/resolv.conf
+    else
+      echo "(no /etc/resolv.conf)"
+    fi
+    echo
+  } >> "$outfile"
+}
+
+main() {
+  require_root
+  require_cmd "$DIALOG_BIN" dialog
+  require_cmd nmtui nmtui
+  require_cmd nmcli nmcli
+  require_cmd systemctl systemd
+
+  # Create temps now that we know we’re proceeding
+  TMP_BEFORE=$(mktemp /tmp/nm-before.XXXXXX)
+  TMP_AFTER=$(mktemp  /tmp/nm-after.XXXXXX)
+  TMP_DIFF=$(mktemp   /tmp/nm-diff.XXXXXX)
+
+  "$DIALOG_BIN" --backtitle "Network Settings (Rocky Linux)" \
+    --title "Taking Snapshot" --infobox "Capturing current NetworkManager settings..." 6 60
+  sleep 0.5
+  nm_snapshot "$TMP_BEFORE"
+
+  "$DIALOG_BIN" --backtitle "Network Settings (Rocky Linux)" \
+    --title "Launch nmtui" \
+    --yes-label "Open nmtui" --no-label "Cancel" \
+    --yesno "This will open nmtui so you can edit connections, IPs, DNS, etc.\n\nProceed?" 10 70
+  case $? in
+    0) nmtui ;;
+    1|255)
+       "$DIALOG_BIN" --title "Cancelled" --msgbox "No changes made. Exiting." 6 40
+       exit 0 ;;
+  esac
+
+  "$DIALOG_BIN" --backtitle "Network Settings (Rocky Linux)" \
+    --title "Taking Snapshot" --infobox "Capturing NetworkManager settings after nmtui..." 6 60
+  sleep 0.5
+  nm_snapshot "$TMP_AFTER"
+
+  if diff -u "$TMP_BEFORE" "$TMP_AFTER" > "$TMP_DIFF"; then
+    "$DIALOG_BIN" --title "No Changes Detected" \
+      --msgbox "No configuration differences were detected.\nNo restart needed." 7 50
+    exit 0
+  fi
+
+  "$DIALOG_BIN" --backtitle "Network Settings (Rocky Linux)" \
+    --title "Detected Changes (before → after)" \
+    --textbox "$TMP_DIFF" 25 100
+
+  "$DIALOG_BIN" --backtitle "Network Settings (Rocky Linux)" \
+    --title "Restart NetworkManager?" \
+    --yes-label "Restart now" --no-label "Skip" \
+    --yesno "Configuration changes were detected.\n\nDo you want to restart NetworkManager now?\n\nCommand: systemctl restart NetworkManager" 12 70
+
+  case $? in
+    0)
+      "$DIALOG_BIN" --title "Restarting" --infobox "Restarting NetworkManager..." 6 40
+      if systemctl restart NetworkManager; then
+        sleep 1
+        if systemctl is-active --quiet NetworkManager; then
+          "$DIALOG_BIN" --title "Success" --msgbox "NetworkManager restarted successfully." 6 45
+        else
+          "$DIALOG_BIN" --title "Warning" --msgbox "Restart issued, but NetworkManager is not active.\nCheck: systemctl status NetworkManager" 8 60
+        fi
+      else
+        "$DIALOG_BIN" --title "Error" --msgbox "Failed to restart NetworkManager.\nCheck logs with: journalctl -u NetworkManager" 8 70
+      fi
+      ;;
+    1|255)
+      "$DIALOG_BIN" --title "Skipped" --msgbox "Restart skipped. Changes may not take effect until a restart or reconnection." 8 70
+      ;;
+  esac
+}
+
+main "$@"
