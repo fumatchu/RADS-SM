@@ -9,12 +9,10 @@ else
 echo "Running Program"
 fi
 
-items=(1 "Check for System Updates"
-       2 "Start/Stop Services on Boot"
-       3 "Configure Network"
-       4 "Show Network Settings"
-       5 "Reboot the Server"
-       6 "Shutdown the Server")
+items=(1 "Configure Network"
+       2 "Show Network Settings"
+       3 "Reboot the Server"
+       4 "Shutdown the Server")
 
 while choice=$(dialog --title "$TITLE" \
                  --backtitle "System Management" \
@@ -22,12 +20,10 @@ while choice=$(dialog --title "$TITLE" \
                  2>&1 >/dev/tty)
     do
     case $choice in
-        1) /root/.servman/SystemManager/dnfupdate;;
-        2) /root/.servman/SystemManager/start-stop-services;;
-        3) /root/.servman/SystemManager/configure-network ;;
-        4) /root/.servman/SystemManager/show-network;;
-        5) /root/.servman/SystemManager/reboot-server;;
-        6) /root/.servman/SystemManager/shutdown-server;;
+        1) /root/.servman/SystemManager/configure-network ;;
+        2) /root/.servman/SystemManager/show-network;;
+        3) /root/.servman/SystemManager/reboot-server;;
+        4) /root/.servman/SystemManager/shutdown-server;;
     esac
 done
 clear # clear after user pressed Cancel
