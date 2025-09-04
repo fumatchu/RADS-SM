@@ -12,35 +12,72 @@ manage_fail2ban_ssh() {
   require_root() { [[ ${EUID:-$(id -u)} -eq 0 ]] || { echo "Run as root"; exit 1; }; }
   ts() { date +"%Y-%m-%d %H:%M:%S"; }
 
-  # parse values from [sshd] section; empty if not set
- # parse values from [sshd] section; empty if not set
-get_sshd_value() {
-  local key="$1"
-  [[ -f "$SSHD_LOCAL_FILE" ]] || { echo ""; return; }
-  awk -v IGNORECASE=1 -v key="$key" '
-    BEGIN { section=0 }
-    /^[[:space:]]*\[/ {
-      section = ($0 ~ /^[[:space:]]*\[sshd\][[:space:]]*$/)
-      next
-    }
-    section {
-      line=$0
-      sub(/;.*$/,"",line)       # strip ; comments
-      sub(/#.*$/,"",line)       # strip # comments
-      # match: key = value   (spaces optional)
-      if (match(line, "^[[:space:]]*" key "[[:space:]]*=[[:space:]]*(.*)$", m)) {
-        val = m[1]
-        gsub(/^[[:space:]]+|[[:space:]]+$/,"",val)
-        print val
-        exit
-      }
-    }
-  ' "$SSHD_LOCAL_FILE"
-}
+  # remove CRs and trim whitespace
+  sanitize() {
+    local s="$1"
+    s="${s//$'\r'/}"
+    s="${s#"${s%%[![:space:]]*}"}"
+    s="${s%"${s##*[![:space:]]}"}"
+    printf '%s' "$s"
+  }
 
-  # Write new config atomically, preserving a backup
+  # read key from [sshd] section
+  get_sshd_value() {
+    local key="$1"
+    [[ -f "$SSHD_LOCAL_FILE" ]] || { echo ""; return; }
+    awk -v IGNORECASE=1 -v key="$key" '
+      BEGIN { section=0 }
+      /^[[:space:]]*\[/ {
+        section = ($0 ~ /^[[:space:]]*\[sshd\][[:space:]]*$/)
+        next
+      }
+      section {
+        line=$0
+        sub(/;.*$/,"",line)
+        sub(/#.*$/,"",line)
+        if (match(line, "^[[:space:]]*" key "[[:space:]]*=[[:space:]]*(.*)$", m)) {
+          val = m[1]
+          gsub(/^[[:space:]]+|[[:space:]]+$/,"",val)
+          print val
+          exit
+        }
+      }
+    ' "$SSHD_LOCAL_FILE"
+  }
+
+  # Convert N, Nm, Nh, Nd, Nw -> seconds
+  parse_timespec() {
+    local in="$1"
+    shopt -s nocasematch
+    if [[ "$in" =~ ^([0-9]+)([smhdw])?$ ]]; then
+      local n="${BASH_REMATCH[1]}"
+      local u="${BASH_REMATCH[2]:-s}"
+      case "$u" in
+        s) echo $((n)) ;;
+        m) echo $((n*60)) ;;
+        h) echo $((n*3600)) ;;
+        d) echo $((n*86400)) ;;
+        w) echo $((n*604800)) ;;
+      esac
+      return 0
+    fi
+    return 1
+  }
+  is_timespec() { parse_timespec "$1" >/dev/null; }
+
+  # yes/on/1 -> true ; no/off/0 -> false
+  normalize_bool() {
+    local b="${1,,}"
+    case "$b" in
+      true|1|yes|on)   echo "true";  return 0 ;;
+      false|0|no|off)  echo "false"; return 0 ;;
+      *) return 1 ;;
+    esac
+  }
+
+  # Write new config atomically
   write_sshd_config() {
-    local maxretry="$1" findtime="$2" bantime="$3" inc="$4" factor="$5"
+    local maxretry="$1" findtime_s="$2" bantime_s="$3" inc="$4" factor="$5"
     mkdir -p "$JAIL_DIR"
     umask 022
 
@@ -48,42 +85,109 @@ get_sshd_value() {
       cp -a "$SSHD_LOCAL_FILE" "${SSHD_LOCAL_FILE}.bak.$(date +%Y%m%d%H%M%S)"
     fi
 
-    local tmp
-    tmp=$(mktemp "${SSHD_LOCAL_FILE}.XXXXXX")
-
+    local tmp; tmp=$(mktemp "${SSHD_LOCAL_FILE}.XXXXXX")
     cat > "$tmp" <<EOL
 # Managed by dialog SSH jail manager on $(ts)
 # Previous version backed up next to this file as *.bak.YYYYMMDDHHMMSS
 [sshd]
 enabled = true
 maxretry = ${maxretry}
-findtime = ${findtime}
-bantime = ${bantime}
+findtime = ${findtime_s}
+bantime = ${bantime_s}
 bantime.increment = ${inc}
 bantime.factor = ${factor}
 EOL
 
-    # keep SELinux contexts correct if enabled
     mv -f "$tmp" "$SSHD_LOCAL_FILE"
     if command -v sestatus >/dev/null 2>&1 && sestatus 2>/dev/null | grep -qi "enabled"; then
       restorecon -v "$SSHD_LOCAL_FILE" >> "$LOG_FILE" 2>&1 || true
     fi
-    echo "[$(ts)] Wrote $SSHD_LOCAL_FILE (maxretry=$maxretry findtime=$findtime bantime=$bantime inc=$inc factor=$factor)" >> "$LOG_FILE"
+    echo "[$(ts)] Wrote $SSHD_LOCAL_FILE (maxretry=$maxretry findtime=${findtime_s}s bantime=${bantime_s}s inc=$inc factor=$factor)" >> "$LOG_FILE"
   }
 
-  # Validate inputs
+  # Manual edit in dialog editor
+  manual_edit_sshd_local() {
+    mkdir -p "$JAIL_DIR"
+    if [[ ! -f "$SSHD_LOCAL_FILE" ]]; then
+      # seed a minimal file if missing
+      cat > "$SSHD_LOCAL_FILE" <<'EOL'
+[sshd]
+enabled = true
+maxretry = 5
+findtime = 300
+bantime = 3600
+bantime.increment = true
+bantime.factor = 2
+EOL
+    fi
+
+    local tmp in out rc
+    tmp=$(mktemp)
+    cp -a "$SSHD_LOCAL_FILE" "$tmp"
+
+    # Prefer output-fd, then stdout, then legacy stderr
+    if $DIALOG --help 2>&1 | grep -q -- '--output-fd'; then
+      $DIALOG --output-fd 3 \
+        --backtitle "Fail2Ban SSH Management" \
+        --title "Manual Edit: $SSHD_LOCAL_FILE" \
+        --editbox "$tmp" 24 100 3>"$tmp.edited"
+      rc=$?
+    elif $DIALOG --help 2>&1 | grep -q -- '--stdout'; then
+      $DIALOG --stdout \
+        --backtitle "Fail2Ban SSH Management" \
+        --title "Manual Edit: $SSHD_LOCAL_FILE" \
+        --editbox "$tmp" 24 100 >"$tmp.edited"
+      rc=$?
+    else
+      $DIALOG \
+        --backtitle "Fail2Ban SSH Management" \
+        --title "Manual Edit: $SSHD_LOCAL_FILE" \
+        --editbox "$tmp" 24 100 2>"$tmp.edited" >/dev/tty
+      rc=$?
+    fi
+
+    if [[ $rc -ne 0 ]]; then
+      rm -f "$tmp" "$tmp.edited"
+      return 0
+    fi
+
+    # Save with backup
+    cp -a "$SSHD_LOCAL_FILE" "${SSHD_LOCAL_FILE}.bak.$(date +%Y%m%d%H%M%S)"
+    # strip CRs that some terminals introduce
+    tr -d '\r' < "$tmp.edited" > "$tmp.clean"
+    mv -f "$tmp.clean" "$SSHD_LOCAL_FILE"
+    rm -f "$tmp" "$tmp.edited"
+
+    if command -v sestatus >/dev/null 2>&1 && sestatus 2>/dev/null | grep -qi "enabled"; then
+      restorecon -v "$SSHD_LOCAL_FILE" >> "$LOG_FILE" 2>&1 || true
+    fi
+
+    echo "[$(ts)] Manually edited $SSHD_LOCAL_FILE via dialog editor" >> "$LOG_FILE"
+
+    # Offer to reload
+    $DIALOG --title "Saved" --yesno "Saved changes to:\n$SSHD_LOCAL_FILE\n\nReload Fail2Ban now?" 10 60
+    if [[ $? -eq 0 ]]; then
+      if systemctl is-active --quiet fail2ban; then
+        if ! fail2ban-client reload >/dev/null 2>&1; then
+          systemctl restart fail2ban >/dev/null 2>&1 || true
+        fi
+        $DIALOG --title "Done" --msgbox "Fail2Ban reloaded (or restarted)." 6 50
+      else
+        $DIALOG --title "Service Inactive" --msgbox "Fail2Ban service is not active." 7 50
+      fi
+    fi
+  }
+
+  # basic validators
   is_int()   { [[ "$1" =~ ^[0-9]+$ ]]; }
   is_float() { [[ "$1" =~ ^([0-9]+([.][0-9]+)?)$ ]]; }
-  is_bool()  { [[ "${1,,}" =~ ^(true|false)$ ]]; }
 
   # Status helpers
   show_status_box() {
-    local out
-    out=$(fail2ban-client status sshd 2>&1 || true)
+    local out; out=$(fail2ban-client status sshd 2>&1 || true)
     "$DIALOG" --backtitle "Fail2Ban SSH Management" --title "SSHD Jail Status" --msgbox "$out" 20 90
   }
   show_recent_bans() {
-    # Show last 200 lines mentioning "Ban " from log
     local logfile="/var/log/fail2ban.log"
     local tmp; tmp=$(mktemp)
     if [[ -f "$logfile" ]]; then
@@ -129,7 +233,7 @@ EOL
 
   # Main menu loop
   while true; do
-    # Load current values (with fallbacks)
+    # Load current values (display as-is; we normalize on save)
     local MAXRETRY FINDTIME BANTIME INC FACTOR
     MAXRETRY="$(get_sshd_value maxretry)"; [[ -n "${MAXRETRY}" ]] || MAXRETRY=5
     FINDTIME="$(get_sshd_value findtime)"; [[ -n "${FINDTIME}" ]] || FINDTIME=300
@@ -139,60 +243,99 @@ EOL
 
     local choice
     choice=$($DIALOG --clear --backtitle "Fail2Ban SSH Management (Rocky Linux)" --title "SSHD Jail Manager" \
-      --menu "Choose an action" 14 72 6 \
-      1 "Edit SSHD jail timeouts/retries" \
+      --menu "Choose an action" 16 78 7 \
+      1 "Edit SSHD jail timeouts/retries (guided form)" \
       2 "Apply & reload Fail2Ban (sshd)" \
       3 "Show SSHD jail status" \
       4 "Show recent bans" \
       5 "Unban an IP" \
+      6 "Manual edit sshd.local" \
       0 "Exit" 2>&1 >/dev/tty) || break
 
     case "$choice" in
       1)
-        # Edit form
-        local form_out
-        form_out=$($DIALOG --backtitle "Fail2Ban SSH Management" --title "Edit SSHD Jail Parameters" \
-          --form "Enter numeric seconds for times. 'bantime.increment' is true/false." 16 72 6 \
-          "maxretry:"           1 2  "$MAXRETRY"  1 22  10  0 \
-          "findtime (s):"       2 2  "$FINDTIME"  2 22  10  0 \
-          "bantime (s):"        3 2  "$BANTIME"   3 22  10  0 \
-          "bantime.increment:"  4 2  "$INC"       4 22  10  0 \
-          "bantime.factor:"     5 2  "$FACTOR"    5 22  10  0 \
-          2>&1 >/dev/tty) || continue
+        # --- robust form capture to handle all dialog variants ---
+        local tmp form_out rc
+        tmp=$(mktemp)
 
-        # Parse fields into an array
-        IFS=$'\n' read -r MAXRETRY FINDTIME BANTIME INC FACTOR <<< "$form_out"
+        if $DIALOG --help 2>&1 | grep -q -- '--output-fd'; then
+          $DIALOG --output-fd 3 \
+            --backtitle "Fail2Ban SSH Management" --title "Edit SSHD Jail Parameters" \
+            --form "Times accept: N, Nm, Nh, Nd, Nw (e.g., 300, 10m, 2h). Booleans accept: true/false/yes/no/on/off/1/0." 18 74 6 \
+            "maxretry:"           1 2  "$MAXRETRY"  1 22  12  0 \
+            "findtime:"           2 2  "$FINDTIME"  2 22  12  0 \
+            "bantime:"            3 2  "$BANTIME"   3 22  12  0 \
+            "bantime.increment:"  4 2  "$INC"       4 22  12  0 \
+            "bantime.factor:"     5 2  "$FACTOR"    5 22  12  0 \
+            3>"$tmp"
+          rc=$?
+        elif $DIALOG --help 2>&1 | grep -q -- '--stdout'; then
+          $DIALOG --stdout \
+            --backtitle "Fail2Ban SSH Management" --title "Edit SSHD Jail Parameters" \
+            --form "Times accept: N, Nm, Nh, Nd, Nw (e.g., 300, 10m, 2h). Booleans accept: true/false/yes/no/on/off/1/0." 18 74 6 \
+            "maxretry:"           1 2  "$MAXRETRY"  1 22  12  0 \
+            "findtime:"           2 2  "$FINDTIME"  2 22  12  0 \
+            "bantime:"            3 2  "$BANTIME"   3 22  12  0 \
+            "bantime.increment:"  4 2  "$INC"       4 22  12  0 \
+            "bantime.factor:"     5 2  "$FACTOR"    5 22  12  0 >"$tmp"
+          rc=$?
+        else
+          # very old dialog: values on stderr
+          $DIALOG \
+            --backtitle "Fail2Ban SSH Management" --title "Edit SSHD Jail Parameters" \
+            --form "Times accept: N, Nm, Nh, Nd, Nw (e.g., 300, 10m, 2h). Booleans accept: true/false/yes/no/on/off/1/0." 18 74 6 \
+            "maxretry:"           1 2  "$MAXRETRY"  1 22  12  0 \
+            "findtime:"           2 2  "$FINDTIME"  2 22  12  0 \
+            "bantime:"            3 2  "$BANTIME"   3 22  12  0 \
+            "bantime.increment:"  4 2  "$INC"       4 22  12  0 \
+            "bantime.factor:"     5 2  "$FACTOR"    5 22  12  0 \
+            2>"$tmp" >/dev/tty
+          rc=$?
+        fi
 
-        # Normalize bool
-        INC="${INC,,}"
+        # user cancelled
+        if [[ $rc -ne 0 ]]; then rm -f "$tmp"; continue; fi
+        form_out="$(cat "$tmp")"; rm -f "$tmp"
 
-        # Validate
-        local err=""
+        # robust split preserving blank lines; also strip CRs
+        local __F=()
+        while IFS= read -r line; do __F+=("$(sanitize "$line")"); done < <(printf '%s\n' "$form_out")
+        while ((${#__F[@]} < 5)); do __F+=(""); done
+
+        MAXRETRY="${__F[0]}"
+        FINDTIME="${__F[1]}"
+        BANTIME="${__F[2]}"
+        INC="${__F[3]}"
+        FACTOR="${__F[4]}"
+
+        # Validate & normalize
+        local err="" FINDTIME_S BANTIME_S INC_NORM
         is_int "$MAXRETRY" || err+="\n- maxretry must be an integer"
-        is_int "$FINDTIME" || err+="\n- findtime must be an integer (seconds)"
-        is_int "$BANTIME"  || err+="\n- bantime must be an integer (seconds)"
-        is_bool "$INC"     || err+="\n- bantime.increment must be true or false"
+
+        if is_timespec "$FINDTIME"; then FINDTIME_S="$(parse_timespec "$FINDTIME")"; else err+="\n- findtime must be a number with optional unit (s/m/h/d/w)"; fi
+        if is_timespec "$BANTIME";   then BANTIME_S="$(parse_timespec "$BANTIME")";   else err+="\n- bantime must be a number with optional unit (s/m/h/d/w)"; fi
+
+        if INC_NORM="$(normalize_bool "$INC")"; then INC="$INC_NORM"; else err+="\n- bantime.increment must be true/false (yes/no/on/off/1/0 allowed)"; fi
         is_float "$FACTOR" || err+="\n- bantime.factor must be a number (e.g., 2 or 1.5)"
 
         if [[ -n "$err" ]]; then
-          $DIALOG --title "Validation Errors" --msgbox "Please fix:\n$err" 12 70
+          $DIALOG --title "Validation Errors" --msgbox "Please fix:$err" 14 74
           continue
         fi
 
         # Confirm and write
         $DIALOG --title "Confirm Changes" --yesno "Apply these settings to $SSHD_LOCAL_FILE?\n
 maxretry:          $MAXRETRY
-findtime (s):      $FINDTIME
-bantime (s):       $BANTIME
+findtime:          $FINDTIME  -> ${FINDTIME_S}s
+bantime:           $BANTIME   -> ${BANTIME_S}s
 bantime.increment: $INC
-bantime.factor:    $FACTOR" 14 60
+bantime.factor:    $FACTOR" 16 64
         if [[ $? -eq 0 ]]; then
-          write_sshd_config "$MAXRETRY" "$FINDTIME" "$BANTIME" "$INC" "$FACTOR"
+          write_sshd_config "$MAXRETRY" "$FINDTIME_S" "$BANTIME_S" "$INC" "$FACTOR"
           $DIALOG --title "Saved" --msgbox "Configuration saved.\nYou can reload Fail2Ban next." 7 50
         fi
         ;;
       2)
-        # Reload Fail2Ban
         if systemctl is-active --quiet fail2ban; then
           if fail2ban-client reload >/dev/null 2>&1; then
             $DIALOG --title "Reloaded" --msgbox "Fail2Ban reloaded successfully." 6 40
@@ -218,6 +361,7 @@ bantime.factor:    $FACTOR" 14 60
       3) show_status_box ;;
       4) show_recent_bans ;;
       5) unban_ip ;;
+      6) manual_edit_sshd_local ;;
       0) break ;;
     esac
   done
