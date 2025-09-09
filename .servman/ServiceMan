@@ -3,11 +3,12 @@ set -euo pipefail
 
 declare -A SERVICE_ADMIN_TOOLS=(
   [samba.service]="/root/.servman/SambaMan"
+  [dhcod.service]="/root/.servman/DHCPMan"
   [kea-dhcp4.service]="/root/.rfwb-admin/dhcp-admin.sh"
   [kea-dhcp-ddns.service]="/root/.rfwb-admin/dhcp-admin.sh"
   [chronyd.service]="/root/.servman/NTPMan/ntp_admin.sh"
   [fail2ban.service]="/root/.servman/jail-admin.sh"
-  # Add more as needed
+  
 )
 
 
@@ -16,6 +17,7 @@ declare -A SERVICE_ADMIN_TOOLS=(
 CANDIDATE_UNITS=(
   chronyd.service
   samba.service
+  dhcpd.service
   fail2ban.service
   kea-dhcp-ddns.service
   kea-dhcp4.service
