@@ -71,7 +71,7 @@ while choice=$(dialog --title "$TITLE" \
     8) /root/.servman/BackupMan.sh ;;
     9) /root/.servman/SERVMan;;
     10) /root/.servman/TOOLMan;;
-    11) /root/.servman/welcome.readme | more;;
+    11) /root/.servman/welcome.readme;;
     esac
 done
 clear # clear after user pressed Cancel
