@@ -1,105 +1,98 @@
 #!/bin/bash
-textreset=$(tput sgr0)
-red=$(tput setaf 1)
-yellow=$(tput setaf 3)
-green=$(tput setaf 2)
+# server-manager README (dialog, scrollable)
+set -euo pipefail
 
-clear
-cat <<EOF
-${red}Server Management${textreset}
+DIALOG=${DIALOG:-dialog}
+BACKTITLE=${BACKTITLE:-"Server Management — README"}
 
-Welcome to Server Management. This is a dialog based driven GUI menu system backed by smaller scripts
+command -v "$DIALOG" >/dev/null 2>&1 || { echo "dialog is not installed."; exit 1; }
+
+TMPDIR="$(mktemp -d)"; trap 'rm -rf "$TMPDIR"' EXIT
+README_RAW="$TMPDIR/readme.txt"
+
+# --- Your README content (no ANSI escape codes) ---
+cat >"$README_RAW" <<'EOF'
+Server Management
+
+Welcome to Server Management. This is a dialog-driven menu system backed by smaller scripts
 to help you get things done efficiently.
-Server management is based on scripts designed for the RADS and FR-RADS installs, but also brings
-native menus into the system(ntsysv, htop, etc). You can start Server Management at any time by typing 
-${yellow}server-manager${textreset} from the terminal
-
+Server Management is based on scripts designed for the RADS and FR-RADS installs, but also brings
+native menus into the system (ntsysv, htop, etc). You can start Server Management at any time by typing
+server-manager from the terminal.
 
 For a RADS install the following is available:
 
-${green}Active Directory Management${textreset}
+Active Directory Management
+  - Add User
+      Allows you to add a new user to Active Directory
+  - Delete User
+      Provides a scrolling list of users; choose a username and confirm deletion
+  - Password Reset
+      Provides a scrolling list of users; select a username to reset the password
+  - List All Users
+      Shows a scrolling list of all users on the system
+  - Create New Group
+      Creates a new group on the Default Domain
+  - Delete Group
+      Provides a scrolling list of groups and prompts for deletion
+  - List Group
+      Provides a scrolling list of groups
+  - Move Users to Group
+      Provides scrolling lists of users and groups to add a user to a group
+  - Remove User from a Group
+      Provides a scrolling list of groups for user removal
 
-        -Add User
-                This will allow you to add a new user to Active Directory      
-        -Delete User
-                Provides a scrolling list of users to determine which username you want to delete and prmopts for deletion
-        -Password Reset
-                Provides a scrolling list of users to determine which username you want to select for password reset
-       -List All Users 
-                Provides a Scrolling list of all users on the system  
-        -Create New Group
-                Creates a new Group on the Default Domain
-        -Delete Group
-                Provides a scrolling list of groups and prompts for deletion 
-        -List Group 
-                Provides a scrolling list of groups
-        -Move Users to Group 
-                Provides ascrolling list of users and groups to allow you to add user TO a group 
-        -Remove User from a Group
-                Provides a scrolling list of groups fro user removal 
+This is a Preview release: functionality works, but the module is not complete. More additions are coming:
+  - DNS modifications / Zones
+  - OU manipulation
+  - Visualizations
+This is not designed to replace RSAT, but to complement it on the terminal.
 
-This is a Preview release, meaning all functionality technically works, but the module is not complete. More additions are coming 
-        -DNS modifications/Zones
-        -OU manipulation
-        -Vizualizations 
-This is not designed to be a replacmeent for RSAT, but as complimentary if on the Terminal 
-        
-${green}DHCP Management${textreset}
+DHCP Management
+  - Create a new DHCP Scope
+      Creates a new DHCP scope based on user input
+  - Query DHCP Database
+      Search via MAC, IP address, or hostname for active leases
+  - List DHCP Leases
+  - Start/Stop/Restart/Enable/Disable DHCP Service
+  - DHCP Server Status
+  - Edit DHCP Config File (manual)
 
-        -Create a new DHCP Scope
-                This creates a new DHCP scope based on user input 
-        -Query DHCP Database 
-                Search via MAC, IP Address or hostname for Active leases
-        -List DHCP Leases
-        -Start DHCP Server
-        -Stop DHCP Server
-        -Restart DHCP Service
-        -Enable DHCP Service 
-        -Disable DHCP Service
-        -Provide DHCP Server Status
-        -Edit DHCP Config File, Manually
+Samba Management
+  - Start / Stop / Restart
+  - Samba Server Status
+  - Samba Update Sync log (dnf-smb)
+  - Samba Update (mock build for updated .src packages from Rocky)
+  - Edit Samba Config
 
-${green}Samba Management${textreset}
+System Management
+  - Check for system updates (dnf -y update)
+  - Start/Stop Services on boot (ntsysv)
+  - Show Network Settings (nmcli)
+  - Reboot / Shutdown the Server
 
-        -Start
-        -Stop
-        -Restart
-        -Samba Server Status
-        -Samba Update Sync log (dnf-smb)
-        -Samba Update (mock build for updated .src packages from Rocky)
-        -Edit Samba Config 
+Server Management Options
+  - Enable SM on Boot (load on root login)
+  - Disable SM on Boot
+  - Update Module (check GitHub for updates)
 
-
-${green}System Management${textreset}
-
-        -Check for system updates
-                This will allow you to update the server for the core rpm packages (dnf -y update)
-        -Start/Stop Services on boot
-                This will allow you to enable or disable services on boot (ntsysv)
-        -Show Network Settings
-                Display a static output of the current interface configuration (nmcli)
-        -Reboot the Server
-                reboot the server
-        -Shutdown the Server
-                shutdown the server (power it off)
-
-${green}Server Management Options${textreset}
-        -Enable SM on Boot (will configure SM to load when logging in as root)
-        -Disable SM on Boot (will remove SM from loading upon logging into the server as root)
-        - Update Module will have server-manager go out to GitHub and check for updates to server-manager
-
-${green}System Tools${textreset}
-        -Process Monitor
-                Loads htop for process monitoring
-        -Network Monitor
-                Loads iptraf-ng for traffic flow
-        -File Manager
-                Loads mc for file management
-        -Editor
-                Loads nano
-
-
-
-########################
-
+System Tools
+  - Process Monitor (htop)
+  - Network Monitor (iptraf-ng)
+  - File Manager (mc)
+  - Editor (nano)
 EOF
+
+# --- Wrap to your terminal width (no manual pagination) ---
+HEIGHT=${LINES:-$(tput lines 2>/dev/null || echo 24)}
+WIDTH=${COLUMNS:-$(tput cols 2>/dev/null || echo 80)}
+WRAP_COLS=$(( WIDTH > 16 ? WIDTH - 8 : 72 ))
+
+WRAPPED="$TMPDIR/readme_wrapped.txt"
+fold -s -w "$WRAP_COLS" "$README_RAW" > "$WRAPPED"
+
+"$DIALOG" \
+  --backtitle "$BACKTITLE" \
+  --ok-label "Done" \
+  --title "README — Use ↑/↓/PgUp/PgDn, Home/End to scroll" \
+  --textbox "$WRAPPED" 0 0
