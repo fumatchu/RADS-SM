@@ -2,26 +2,30 @@
 # DHCP Manager Suite (dialog)
 # One script, multiple tools — all dialog-based.
 #
-# Includes functions for:
+# Tools:
 #   1) View Leases (raw/active/last/live/search)
 #   2) Search Leases (MAC / Hostname / Subnet)
 #   3) Edit dhcpd.conf (validate, save w/ backup, optional restart)
-#   4) Delete Scope(s) from dhcpd.conf (includes preceding comment block & trailing blanks)
-#   5) (Placeholder) Create Scope & Options — paste your existing creator here
+#   4) Delete Scope(s) from dhcpd.conf (deletes preceding # comments & trailing blanks)
+#   5) Create DHCP Scope & Options (full wizard incl. Opt43 TLV builder)
 #
 # Usage:
 #   chmod +x dhcp-suite.sh
 #   sudo ./dhcp-suite.sh
 
 set -euo pipefail
-BACKTITLE="DHCP Manager for ISC DHCP Server"
-export DIALOGOPTS="--backtitle \"$BACKTITLE\""
+
+# --- Global UI/paths ---
+BACKTITLE=${BACKTITLE:-"DHCP Manager for ISC DHCP Server"}
+export DIALOGOPTS="--backtitle $BACKTITLE"
 
 DIALOG=${DIALOG:-dialog}
 CONF="/etc/dhcp/dhcpd.conf"
+OPTFILE="/etc/dhcp/custom-options.conf"
 LOG="/var/log/dhcp-manager-suite.log"
 TMPROOT="$(mktemp -d)"; trap 'rm -rf "$TMPROOT"' EXIT
 
+# ---------- Small helpers ----------
 need_root(){ [[ $EUID -eq 0 ]] || { $DIALOG --msgbox "This tool must be run as root." 7 40; exit 1; }; }
 cmd_exists(){ command -v "$1" &>/dev/null; }
 die(){ $DIALOG --msgbox "Error:\n$*" 10 80; exit 1; }
@@ -45,10 +49,32 @@ restart_service(){
 validate_conf(){
   local file="$1" out rc
   out=$(dhcpd -t -cf "$file" 2>&1); rc=$?
-  {
-    echo -e "\n--- $(date) ---\nvalidate: rc=$rc\n$out" >>"$LOG"
-  } || true
+  { echo -e "\n--- $(date) ---\nvalidate: rc=$rc\n$out" >>"$LOG"; } || true
   [[ $rc -eq 0 ]]
+}
+
+# --- Fix single-quoted/curly-quoted domain lines & en-dash typos ---
+sanitize_domain_lines() {
+  # $1 = file to sanitize
+  local file="$1"
+  [[ -f "$file" ]] || return 0
+
+  # Bail if nothing suspicious
+  if ! grep -qE "option[[:space:]]+domain-(name|search)[[:space:]]+['’]" "$file" \
+     && ! grep -qE "option[[:space:]]+domain–(name|search)[[:space:]]+" "$file"; then
+    return 0
+  fi
+
+  local ts backup sq; ts="$(date +%Y%m%d%H%M%S)"; backup="${file}.prequote.${ts}.bak"; sq="'"
+  cp -a "$file" "$backup" 2>/dev/null || true
+
+  sed -i -E \
+    -e "s/’/'/g; s/‘/'/g; s/–/-/g" \
+    -e "s/^[[:space:]]*option[[:space:]]+domain-name[[:space:]]+$sq([^$sq]+)$sq([[:space:]]*;)/option domain-name \"\\1\"\\2/g" \
+    -e "s/^[[:space:]]*option[[:space:]]+domain-search[[:space:]]+$sq([^$sq]+)$sq([[:space:]]*;)/option domain-search \"\\1\"\\2/g" \
+    "$file"
+
+  ${DIALOG:-dialog} --msgbox "Found and fixed single/curly quotes or en-dash in:\n$file\n\nBackup saved as:\n$backup" 12 70 || true
 }
 
 # ==========================================================
@@ -85,9 +111,9 @@ build_summary(){
     /^lease[ \t]+([0-9]{1,3}\.){3}[0-9]{1,3}[ \t]*\{/ { if(inblk) finish(curip); match($0, /lease[ \t]+(([0-9]{1,3}\.){3}[0-9]{1,3})/, m); curip=m[1]; inblk=1; state=""; mac=""; host=""; starts=""; ends=""; next }
     inblk && /binding state/ { gsub(/.*binding state[ \t]+/, ""); gsub(/;.*/, ""); state=trim($0); next }
     inblk && /hardware ethernet/ { match($0, /hardware ethernet[ \t]+([^;]+)/, m); mac=trim(m[1]); next }
-    inblk && /client-hostname/ { match($0, /client-hostname[ \t]+"([^"]*)"/, m); host=m[1]; next }
-    inblk && /starts [0-9]+/ { match($0, /starts [0-9]+ ([0-9/]+ [0-9:]+)/, m); starts=m[1]; next }
-    inblk && /ends [0-9]+/ { match($0, /ends [0-9]+ ([0-9/]+ [0-9:]+)/, m); ends=m[1]; next }
+    inblk && /client-hostname/ { match($0, /client-hostname[ \t]+\"([^\"]*)\"/, m); host=m[1]; next }
+    inblk && /starts [0-9]+/ { match($0, /starts [0-9]+ ([0-9\/]+ [0-9:]+)/, m); starts=m[1]; next }
+    inblk && /ends [0-9]+/ { match($0, /ends [0-9]+ ([0-9\/]+ [0-9:]+)/, m); ends=m[1]; next }
     inblk && /}/ { finish(curip); next }
     END{
       printf("%d\t%s\t%s\t%s\t%s\t%s\t%s\n", 0, "IP", "MAC", "STARTS", "ENDS", "STATE", "HOSTNAME")
@@ -210,6 +236,10 @@ config_editor(){
       return 0
     }
     mv -f "$outtmp" "$tmp"; : >"$outtmp"
+
+    # Sanitize quotes/typos before validate
+    sanitize_domain_lines "$tmp"
+
     if validate_conf "$tmp"; then
       $DIALOG --msgbox "Validation PASSED." 6 28
       $DIALOG --yesno "Save changes to $CONF?\n(A backup will be created)" 8 60 || continue
@@ -310,279 +340,52 @@ scopes_delete_menu(){
 }
 
 # ==========================================================
-#             SCOPE CREATOR / OPTIONS (placeholder)
+#        SCOPE CREATOR & OPTIONS (incl. Option 43 builders)
 # ==========================================================
-scope_creator_menu(){
-#!/bin/bash
-# DHCP Scope & Options (dialog) for ISC dhcpd with Cisco Option 43 (f1) wizard + generic TLV builder
-# - Subnet/range/gateway with validation
-# - Options: DNS(6), domain-name(15), domain-search(119), NTP(42), TFTP name(66), TFTP IPs(150),
-#           Bootfile(67), WINS(44), NetBIOS node type(46)
-# - User-defined options (any code 1–254): ip(s), string, domain-name, uint8/16/32, boolean, hex-string
-# - Option 43 support:
-#     * Cisco WLC (classic) f1 wizard — enter WLC IP(s); we compose TLV f1:<len>:<ip bytes>
-#     * Generic TLV builder — build any sub-option TLVs (IP, string→hex, raw hex, u8/u16/u32)
-# - Uses /etc/dhcp/custom-options.conf for custom option *definitions*
-# - Validates with `dhcpd -t`, backs up dhcpd.conf, optional restart
-
-set -euo pipefail
-
-DIALOG=${DIALOG:-dialog}
-CONF="/etc/dhcp/dhcpd.conf"
-OPTFILE="/etc/dhcp/custom-options.conf"
-SERVICE="dhcpd"
-LOG="/var/log/dhcp-scope-tool.log"
-
-# ---------- helpers ----------
-die(){ $DIALOG --msgbox "Error:\n$*" 9 80; exit 1; }
-need_root(){ [[ $EUID -eq 0 ]] || die "This tool must be run as root."; }
-cmd_exists(){ command -v "$1" &>/dev/null; }
+# --- validation/utils for scope creator ---
 trim(){ sed -E 's/^[[:space:]]+//;s/[[:space:]]+$//' <<<"$1"; }
 
-ip_ok(){
-  local ip="$1"
-  [[ $ip =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]] || return 1
-  IFS=. read -r a b c d <<<"$ip"
-  for o in $a $b $c $d; do (( o>=0 && o<=255 )) || return 1; done
-}
+ip_ok(){ local ip="$1"; [[ $ip =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]] || return 1; IFS=. read -r a b c d <<<"$ip"; for o in $a $b $c $d; do (( o>=0 && o<=255 )) || return 1; done; }
 ip2int(){ IFS=. read -r a b c d <<<"$1"; echo $(( (a<<24)+(b<<16)+(c<<8)+d )); }
-mask_ok(){
-  ip_ok "$1" || return 1
-  local m=$(ip2int "$1")
-  (( m!=0 && m!=0xFFFFFFFF )) || return 1
-  (( (m | (m-1)) == 0xFFFFFFFF ))
-}
+mask_ok(){ ip_ok "$1" || return 1; local m=$(ip2int "$1"); (( m!=0 && m!=0xFFFFFFFF )) || return 1; (( (m | (m-1)) == 0xFFFFFFFF )); }
 in_subnet(){ (( ( $(ip2int "$1") & $(ip2int "$3") ) == ( $(ip2int "$2") & $(ip2int "$3") ) )); }
-not_net_or_bcast(){
-  local ip="$1" net="$2" mask="$3"
-  local ipi=$(ip2int "$ip"); local ni=$(ip2int "$net"); local mi=$(ip2int "$mask")
-  local bcast=$(( (ni & mi) | ((~mi)&0xFFFFFFFF) ))
-  (( ipi!=(ni&mi) && ipi!=bcast ))
-}
+not_net_or_bcast(){ local ip="$1" net="$2" mask="$3"; local ipi=$(ip2int "$ip"); local ni=$(ip2int "$net"); local mi=$(ip2int "$mask"); local bcast=$(( (ni & mi) | ((~mi)&0xFFFFFFFF) )); (( ipi!=(ni&mi) && ipi!=bcast )); }
 escape_dhcp_string(){ sed 's/\\/\\\\/g; s/"/\\"/g' <<<"$1"; }
+valid_domain(){ [[ $1 =~ ^([A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)(\.([A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?))+\.?$ ]]; }
 
-valid_domain(){  # RFC-1035-ish, allow optional trailing dot
-  [[ $1 =~ ^([A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)(\.([A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?))+\.?$ ]]
-}
-
-backup_conf(){
-  local ts=$(date +%Y%m%d%H%M%S)
-  cp -a "$CONF" "${CONF}.bak.${ts}" || return 1
-  echo "Backup: ${CONF}.bak.${ts}" >>"$LOG"
-}
-
-test_dhcpd_conf(){
-  local tmp="$1"; local out
-  out=$(dhcpd -t -cf "$tmp" 2>&1); local rc=$?
-  echo -e "\n-- dhcpd -t output --\n$out" >>"$LOG"
-  return $rc
-}
-
-restart_dhcpd(){
-  { echo 20; systemctl daemon-reload >/dev/null 2>&1
-    echo 55; systemctl restart "$SERVICE" >/dev/null 2>&1
-    echo 85; sleep 0.25
-    systemctl is-active "$SERVICE" >/dev/null 2>&1 && echo 100 || echo 0; } |
-  $DIALOG --gauge "Restarting $SERVICE..." 8 50 0
-}
+backup_conf(){ local ts=$(date +%Y%m%d%H%M%S); cp -a "$CONF" "${CONF}.bak.${ts}" || return 1; echo "Backup: ${CONF}.bak.${ts}" >>"$LOG"; }
 
 ensure_optfile(){ [[ -f "$OPTFILE" ]] || { mkdir -p "$(dirname "$OPTFILE")"; touch "$OPTFILE"; }; }
+ensure_include_line(){ local inc="include \"$OPTFILE\";" tmp; grep -Fq "$inc" "$CONF" && return 0 || true; tmp=$(mktemp); { echo "$inc"; echo; cat "$CONF"; } > "$tmp"; cp -a "$CONF" "${CONF}.preinclude.$(date +%Y%m%d%H%M%S).bak"; cat "$tmp" > "$CONF"; rm -f "$tmp"; }
 
-ensure_include_line(){  # include OPTFILE at top of CONF if missing (clean quoting)
-  local inc="include \"$OPTFILE\";"
-  grep -Fq "$inc" "$CONF" && return 0 || true
-  local tmp
-  tmp=$(mktemp)
-  { echo "$inc"; echo; cat "$CONF"; } > "$tmp"
-  cp -a "$CONF" "${CONF}.preinclude.$(date +%Y%m%d%H%M%S).bak"
-  cat "$tmp" > "$CONF"
-  rm -f "$tmp"
-}
+find_option_def_by_code(){ local code="$1"; awk -v c="$code" '
+  BEGIN{IGNORECASE=1}
+  match($0, /^[ \t]*option[ \t]+([A-Za-z0-9_-]+)[ \t]+code[ \t]+([0-9]+)[ \t]*=[ \t]*([^;]+);/, m){ if (m[2] == c) { print m[1] "|" m[3]; exit } }
+' "$CONF" "$OPTFILE" 2>/dev/null; }
 
-# Return "name|type" for an existing code (search CONF and OPTFILE), else empty
-find_option_def_by_code(){
-  local code="$1"
-  awk -v c="$code" '
-    BEGIN{IGNORECASE=1}
-    match($0, /^[ \t]*option[ \t]+([A-Za-z0-9_-]+)[ \t]+code[ \t]+([0-9]+)[ \t]*=[ \t]*([^;]+);/, m){
-      if (m[2] == c) { print m[1] "|" m[3]; exit }
-    }
-  ' "$CONF" "$OPTFILE" 2>/dev/null
-}
+define_option_if_missing(){ local name="$1" code="$2" type="$3"; grep -Eq "^[[:space:]]*option[[:space:]]+$name[[:space:]]+code[[:space:]]+$code[[:space:]]*=" "$CONF" "$OPTFILE" 2>/dev/null || echo "option $name code $code = $type;" >> "$OPTFILE"; }
 
-# Define "name code <code> = <type>;" in OPTFILE if not already defined anywhere
-define_option_if_missing(){
-  local name="$1" code="$2" type="$3"
-  grep -Eq "^[[:space:]]*option[[:space:]]+$name[[:space:]]+code[[:space:]]+$code[[:space:]]*=" "$CONF" "$OPTFILE" 2>/dev/null || echo "option $name code $code = $type;" >> "$OPTFILE"
-}
+ensure_code_with_type(){ local code="$1" desired_type="${2:-}" def; def=$(find_option_def_by_code "$code" || true); if [[ -n "${def:-}" ]]; then echo "$def"; else local name="user-opt-$code"; [[ -n "$desired_type" ]] || desired_type="string"; define_option_if_missing "$name" "$code" "$desired_type"; echo "$name|$desired_type"; fi }
+ensure_named_code_with_type(){ local name="$1" code="$2" desired_type="$3" def; def=$(find_option_def_by_code "$code" || true); if [[ -n "${def:-}" ]]; then echo "$def"; else define_option_if_missing "$name" "$code" "$desired_type"; echo "$name|$desired_type"; fi }
 
-# Ensure an option code exists (reusing any existing def); returns "name|type"
-ensure_code_with_type(){
-  local code="$1" desired_type="${2:-}"
-  local def; def=$(find_option_def_by_code "$code" || true)
-  if [[ -n "${def:-}" ]]; then
-    echo "$def"
-  else
-    local name="user-opt-$code"
-    [[ -n "$desired_type" ]] || desired_type="string"
-    define_option_if_missing "$name" "$code" "$desired_type"
-    echo "$name|$desired_type"
-  fi
-}
+read_ip_list(){ local prompt="$1" value; while :; do value=$($DIALOG --inputbox "$prompt\n(Comma-separated, e.g. 192.168.1.10, 192.168.1.11)" 10 72 "" 3>&1 1>&2 2>&3) || return 1; value=$(trim "$value"); [[ -z $value ]] && { $DIALOG --msgbox "Please enter at least one IP." 6 50; continue; }; local ok=1; IFS=, read -ra arr <<<"$value"; for x in "${arr[@]}"; do x=$(trim "$x"); ip_ok "$x" || { ok=0; break; }; done; (( ok )) && { echo "$(IFS=, ; printf "%s" "${arr[*]// /}")"; return 0; }; $DIALOG --msgbox "One or more IPs are invalid." 6 50; done }
 
-# Named ensure (e.g., option 150 as tftp-server-address)
-ensure_named_code_with_type(){
-  local name="$1" code="$2" desired_type="$3"
-  local def; def=$(find_option_def_by_code "$code" || true)
-  if [[ -n "${def:-}" ]]; then
-    echo "$def"
-  else
-    define_option_if_missing "$name" "$code" "$desired_type"
-    echo "$name|$desired_type"
-  fi
-}
+read_domain_list(){ local v out=(); while :; do v=$($DIALOG --inputbox "Domain Search (Option 119)\nComma-separated FQDNs (e.g. corp.local, eng.corp.local)" 10 72 "" 3>&1 1>&2 2>&3) || return 1; v=$(trim "$v"); [[ -z $v ]] && { $DIALOG --msgbox "Enter at least one domain." 6 48; continue; }; IFS=, read -ra arr <<<"$v"; local ok=1; for d in "${arr[@]}"; do d=$(trim "$d"); valid_domain "$d" || { ok=0; break; }; done; (( ok )) && { for d in "${arr[@]}"; do d=$(trim "$d"); out+=("\"$d\""); done; printf "%s" "$(IFS=,; echo "${out[*]}")"; return 0; }; $DIALOG --msgbox "One or more domains are invalid." 6 50; done }
 
-# Read comma-separated IPs
-read_ip_list(){
-  local prompt="$1" value
-  while :; do
-    value=$($DIALOG --inputbox "$prompt\n(Comma-separated, e.g. 192.168.1.10, 192.168.1.11)" 10 72 "" 3>&1 1>&2 2>&3) || return 1
-    value=$(trim "$value"); [[ -z $value ]] && { $DIALOG --msgbox "Please enter at least one IP." 6 50; continue; }
-    local ok=1; IFS=, read -ra arr <<<"$value"
-    for x in "${arr[@]}"; do x=$(trim "$x"); ip_ok "$x" || { ok=0; break; }; done
-    (( ok )) && { echo "$(IFS=, ; printf "%s" "${arr[*]// /}")"; return 0; }
-    $DIALOG --msgbox "One or more IPs are invalid." 6 50
-  done
-}
-
-# Domain-search list → "a.example","b.corp"
-read_domain_list(){
-  local v out=()
-  while :; do
-    v=$($DIALOG --inputbox "Domain Search (Option 119)\nComma-separated FQDNs (e.g. corp.local, eng.corp.local)" 10 72 "" 3>&1 1>&2 2>&3) || return 1
-    v=$(trim "$v"); [[ -z $v ]] && { $DIALOG --msgbox "Enter at least one domain." 6 48; continue; }
-    IFS=, read -ra arr <<<"$v"; local ok=1
-    for d in "${arr[@]}"; do d=$(trim "$d"); valid_domain "$d" || { ok=0; break; }; done
-    (( ok )) && { for d in "${arr[@]}"; do d=$(trim "$d"); out+=("\"$d\""); done; printf "%s" "$(IFS=,; echo "${out[*]}")"; return 0; }
-    $DIALOG --msgbox "One or more domains are invalid." 6 50
-  done
-}
-
-# ---------- Hex helpers (for Option 43 and hex-string) ----------
-# Normalize to colon-separated pairs: "0104AABB" -> "01:04:aa:bb"
-normalize_hex_pairs() {
-  local s="${1,,}"; s="${s//0x/}"; s="${s//[^0-9a-f]/}"
-  (( ${#s} > 0 && ${#s} % 2 == 0 )) || return 1
-  local out="" pair
-  for ((i=0; i<${#s}; i+=2)); do pair="${s:i:2}"; out+="${out:+:}$pair"; done
-  printf "%s" "$out"
-}
-
-read_hex_pairs() {
-  local label="$1" in norm
-  while :; do
-    in=$($DIALOG --inputbox "$label\nExamples:\n  01:04:aa:bb:cc:dd\n  0104AABBCCDD\n  01 04 aa bb cc dd" 12 72 "" 3>&1 1>&2 2>&3) || return 1
-    in=$(trim "$in")
-    norm=$(normalize_hex_pairs "$in") || { $DIALOG --msgbox "Invalid hex. Use pairs of 0-9a-f (even count)." 7 60; continue; }
-    printf "%s" "$norm"; return 0
-  done
-}
-
-ip_to_hex() {  # 192.168.1.10 -> c0:a8:01:0a
-  IFS=. read -r a b c d <<<"$1"
-  printf "%02x:%02x:%02x:%02x" "$a" "$b" "$c" "$d"
-}
-
-ip_list_to_hex(){  # comma IPs -> colon hex bytes stream
-  local ips_csv="$1" out="" ip hex
-  IFS=, read -ra arr <<<"$ips_csv"
-  for ip in "${arr[@]}"; do ip=$(trim "$ip"); hex=$(ip_to_hex "$ip"); out+="${out:+:}$hex"; done
-  printf "%s" "$out"
-}
-
-ascii_to_hex() {  # ASCII -> colon hex
-  local s="$1" out="" i c
-  for ((i=0;i<${#s};i++)); do
-    printf -v c "%02x" "'${s:i:1}"
-    out+="${out:+:}${c}"
-  done
-  printf "%s" "$out"
-}
-
-dec_to_hex2() {  # one byte, 0-255
-  printf "%02x" "$1"
-}
-
-# Compose TLV: code (1B), length (1B), value (colon-hex string)
-compose_tlv() {
-  local code="$1" val_hex="$2"
-  local nbytes=$(( ( ${#val_hex} + 1 ) / 3 ))  # pairs separated by colons
-  (( nbytes >= 0 && nbytes <= 255 )) || return 1
-  local c=$(dec_to_hex2 "$code"); local l=$(dec_to_hex2 "$nbytes")
-  printf "%s:%s:%s" "$c" "$l" "$val_hex"
-}
-
-# ---------- start ----------
-need_root
-cmd_exists "$DIALOG" || die "dialog is not installed."
-cmd_exists dhcpd    || die "ISC DHCP (dhcpd) is not installed."
-[[ -f "$CONF" ]]    || die "$CONF not found."
-ensure_optfile
-: > "$LOG"
-
-# Collect subnet info
-while :; do
-  SUBNETNETWORK=$($DIALOG --inputbox "Subnet network (e.g. 192.168.25.0)" 8 60 "" 3>&1 1>&2 2>&3) || exit 1
-  ip_ok "$SUBNETNETWORK" || { $DIALOG --msgbox "Invalid IPv4 address." 6 45; continue; }
-  break
-done
-while :; do
-  DHCPNETMASK=$($DIALOG --inputbox "Subnet mask (e.g. 255.255.255.0)" 8 60 "" 3>&1 1>&2 2>&3) || exit 1
-  mask_ok "$DHCPNETMASK" || { $DIALOG --msgbox "Invalid or non-contiguous mask." 6 55; continue; }
-  (( ( $(ip2int "$SUBNETNETWORK") & $(ip2int "$DHCPNETMASK") ) == ( $(ip2int "$SUBNETNETWORK") ) )) || { $DIALOG --msgbox "Network is not aligned to this mask." 6 55; continue; }
-  break
-done
-while :; do
-  DHCPBEGIP=$($DIALOG --inputbox "Lease range START (e.g. 192.168.25.50)" 8 60 "" 3>&1 1>&2 2>&3) || exit 1
-  ip_ok "$DHCPBEGIP" && in_subnet "$DHCPBEGIP" "$SUBNETNETWORK" "$DHCPNETMASK" && not_net_or_bcast "$DHCPBEGIP" "$SUBNETNETWORK" "$DHCPNETMASK" || { $DIALOG --msgbox "Start IP must be a valid host in the subnet." 6 60; continue; }
-  break
-done
-while :; do
-  DHCPENDIP=$($DIALOG --inputbox "Lease range END (e.g. 192.168.25.200)" 8 60 "" 3>&1 1>&2 2>&3) || exit 1
-  ip_ok "$DHCPENDIP" && in_subnet "$DHCPENDIP" "$SUBNETNETWORK" "$DHCPNETMASK" && not_net_or_bcast "$DHCPENDIP" "$SUBNETNETWORK" "$DHCPNETMASK" || { $DIALOG --msgbox "End IP must be a valid host in the subnet." 6 60; continue; }
-  (( $(ip2int "$DHCPBEGIP") <= $(ip2int "$DHCPENDIP") )) || { $DIALOG --msgbox "Start IP must be <= End IP." 6 45; continue; }
-  break
-done
-while :; do
-  DHCPDEFGW=$($DIALOG --inputbox "Default gateway (e.g. 192.168.25.1)" 8 60 "" 3>&1 1>&2 2>&3) || exit 1
-  ip_ok "$DHCPDEFGW" && in_subnet "$DHCPDEFGW" "$SUBNETNETWORK" "$DHCPNETMASK" && not_net_or_bcast "$DHCPDEFGW" "$SUBNETNETWORK" "$DHCPNETMASK" || { $DIALOG --msgbox "Gateway must be a valid host in the subnet." 6 60; continue; }
-  break
-done
-SUBNETDESC=$($DIALOG --inputbox "Description (comment)" 8 60 "" 3>&1 1>&2 2>&3) || exit 1
-
-# ---------- options ----------
-OPTION_LINES=""
-OPT43_HEX=""   # final composed hex for vendor-encapsulated-options
+# Hex helpers (Option 43 / hex-string)
+normalize_hex_pairs(){ local s="${1,,}"; s="${s//0x/}"; s="${s//[^0-9a-f]/}"; (( ${#s} > 0 && ${#s} % 2 == 0 )) || return 1; local out="" pair; for ((i=0; i<${#s}; i+=2)); do pair="${s:i:2}"; out+="${out:+:}$pair"; done; printf "%s" "$out"; }
+read_hex_pairs(){ local label="$1" in norm; while :; do in=$($DIALOG --inputbox "$label\nExamples:\n  01:04:aa:bb:cc:dd\n  0104AABBCCDD\n  01 04 aa bb cc dd" 12 72 "" 3>&1 1>&2 2>&3) || return 1; in=$(trim "$in"); norm=$(normalize_hex_pairs "$in") || { $DIALOG --msgbox "Invalid hex. Use pairs of 0-9a-f (even count)." 7 60; continue; }; printf "%s" "$norm"; return 0; done }
+ip_to_hex(){ IFS=. read -r a b c d <<<"$1"; printf "%02x:%02x:%02x:%02x" "$a" "$b" "$c" "$d"; }
+ip_list_to_hex(){ local ips_csv="$1" out="" ip hex; IFS=, read -ra arr <<<"$ips_csv"; for ip in "${arr[@]}"; do ip=$(trim "$ip"); hex=$(ip_to_hex "$ip"); out+="${out:+:}$hex"; done; printf "%s" "$out"; }
+ascii_to_hex(){ local s="$1" out="" i c; for ((i=0;i<${#s};i++)); do printf -v c "%02x" "'${s:i:1}"; out+="${out:+:}${c}"; done; printf "%s" "$out"; }
+dec_to_hex2(){ printf "%02x" "$1"; }
+compose_tlv(){ local code="$1" val_hex="$2"; local nbytes=$(( ( ${#val_hex} + 1 ) / 3 )); (( nbytes >= 0 && nbytes <= 255 )) || return 1; local c=$(dec_to_hex2 "$code"); local l=$(dec_to_hex2 "$nbytes"); printf "%s:%s:%s" "$c" "$l" "$val_hex"; }
 
 # Cisco f1 quick composer
-cisco_f1_wizard(){
-  local ips hex val tlv
-  ips=$(read_ip_list "Cisco WLC IP(s) for Option 43 (f1)") || return 1
-  hex=$(ip_list_to_hex "$ips")
-  tlv=$(compose_tlv 241 "$hex") || { $DIALOG --msgbox "Failed to compose f1 TLV (too many bytes?)." 6 60; return 1; }
-  OPT43_HEX="$tlv"
-  $DIALOG --msgbox "Will set Option 43 as vendor-encapsulated-options:\n\n$OPT43_HEX" 10 70
-}
+cisco_f1_wizard(){ local ips hex tlv; ips=$(read_ip_list "Cisco WLC IP(s) for Option 43 (f1)") || return 1; hex=$(ip_list_to_hex "$ips"); tlv=$(compose_tlv 241 "$hex") || { $DIALOG --msgbox "Failed to compose f1 TLV (too many bytes?)." 6 60; return 1; }; echo "$tlv"; }
 
-# Generic Option 43 TLV builder (advanced)
-build_opt43_generic(){
-  local tlvs=() ; local tlv_hex="" ; local preview="" ; local choice
-  while :; do
-    preview="Current TLVs:\n"
-    if ((${#tlvs[@]}==0)); then preview+="  (none)\n"; else
-      for i in "${!tlvs[@]}"; do preview+="  $((i+1)). ${tlvs[$i]}\n"; done
-    fi
-    choice=$($DIALOG --menu "Option 43 TLV Builder (advanced)\n\n$preview\nChoose an action:" 22 84 10 \
+# Option 43 generic TLV builder (interactive)
+build_opt43_generic(){ local tlvs=() tlv_hex="" preview choice; while :; do preview="Current TLVs:\n"; if ((${#tlvs[@]}==0)); then preview+="  (none)\n"; else for i in "${!tlvs[@]}"; do preview+="  $((i+1)). ${tlvs[$i]}\n"; done; fi; choice=$($DIALOG --menu "Option 43 TLV Builder (advanced)\n\n$preview\nChoose an action:" 22 84 10 \
       ADDIP     "Add TLV: sub-option CODE + IPv4 address" \
       ADDSTR    "Add TLV: sub-option CODE + ASCII string" \
       ADDHEX    "Add TLV: sub-option CODE + raw hex" \
@@ -593,191 +396,69 @@ build_opt43_generic(){
       CLEAR     "Clear all TLVs" \
       DONE      "Finish and insert Option 43" \
       3>&1 1>&2 2>&3) || { choice="DONE"; }
-
     case "$choice" in
-      ADDIP)
-        local sc ip hexv tlv
-        sc=$($DIALOG --inputbox "Sub-option CODE (0–255) — for Cisco WLC use 241 (0xF1)" 8 60 "241" 3>&1 1>&2 2>&3) || continue
-        sc=$(trim "$sc"); [[ $sc =~ ^[0-9]+$ && $sc -le 255 ]] || { $DIALOG --msgbox "Enter 0–255." 6 30; continue; }
-        ip=$($DIALOG --inputbox "IPv4 address value" 8 50 "" 3>&1 1>&2 2>&3) || continue
-        ip=$(trim "$ip"); ip_ok "$ip" || { $DIALOG --msgbox "Invalid IPv4." 6 30; continue; }
-        hexv=$(ip_to_hex "$ip")
-        tlv=$(compose_tlv "$sc" "$hexv") || { $DIALOG --msgbox "Failed to compose TLV." 6 40; continue; }
-        tlvs+=("code=$sc ip=$ip  -> $tlv")
-        ;;
-      ADDSTR)
-        local sc s hexv tlv
-        sc=$($DIALOG --inputbox "Sub-option CODE (0–255)" 8 50 "" 3>&1 1>&2 2>&3) || continue
-        sc=$(trim "$sc"); [[ $sc =~ ^[0-9]+$ && $sc -le 255 ]] || { $DIALOG --msgbox "Enter 0–255." 6 30; continue; }
-        s=$($DIALOG --inputbox "ASCII string value" 8 60 "" 3>&1 1>&2 2>&3) || continue
-        s=$(trim "$s"); [[ -n $s ]] || { $DIALOG --msgbox "Enter a value." 6 30; continue; }
-        hexv=$(ascii_to_hex "$s")
-        tlv=$(compose_tlv "$sc" "$hexv") || { $DIALOG --msgbox "String too long (>255 bytes)." 6 50; continue; }
-        tlvs+=("code=$sc str=\"$s\"  -> $tlv")
-        ;;
-      ADDHEX)
-        local sc hexv tlv
-        sc=$($DIALOG --inputbox "Sub-option CODE (0–255)" 8 50 "" 3>&1 1>&2 2>&3) || continue
-        sc=$(trim "$sc"); [[ $sc =~ ^[0-9]+$ && $sc -le 255 ]] || { $DIALOG --msgbox "Enter 0–255." 6 30; continue; }
-        hexv=$(read_hex_pairs "Enter raw HEX bytes for sub-option $sc") || continue
-        tlv=$(compose_tlv "$sc" "$hexv") || { $DIALOG --msgbox "Value too long (>255 bytes)." 6 50; continue; }
-        tlvs+=("code=$sc hex=$hexv  -> $tlv")
-        ;;
-      ADDU8|ADDU16|ADDU32)
-        local sc num hexv tlv max
-        sc=$($DIALOG --inputbox "Sub-option CODE (0–255)" 8 50 "" 3>&1 1>&2 2>&3) || continue
-        sc=$(trim "$sc"); [[ $sc =~ ^[0-9]+$ && $sc -le 255 ]] || { $DIALOG --msgbox "Enter 0–255." 6 30; continue; }
-        case "$choice" in
-          ADDU8)  max=255 ;;
-          ADDU16) max=65535 ;;
-          ADDU32) max=4294967295 ;;
-        esac
-        num=$($DIALOG --inputbox "Unsigned integer (0–$max)" 8 60 "" 3>&1 1>&2 2>&3) || continue
-        num=$(trim "$num"); [[ $num =~ ^[0-9]+$ && $num -le $max ]] || { $DIALOG --msgbox "Enter 0–$max." 6 45; continue; }
-        if [[ "$choice" == "ADDU8" ]]; then
-          printf -v hexv "%02x" "$num"
-        elif [[ "$choice" == "ADDU16" ]]; then
-          printf -v hexv "%04x" "$num"; hexv="${hexv:0:2}:${hexv:2:2}"
-        else
-          printf -v hexv "%08x" "$num"; hexv="${hexv:0:2}:${hexv:2:2}:${hexv:4:2}:${hexv:6:2}"
-        fi
-        tlv=$(compose_tlv "$sc" "$hexv") || { $DIALOG --msgbox "Failed to compose TLV." 6 40; continue; }
-        tlvs+=("code=$sc $choice=$num  -> $tlv")
-        ;;
-      DELLAST)
-        ((${#tlvs[@]})) && unset 'tlvs[${#tlvs[@]}-1]' || $DIALOG --msgbox "No TLVs to delete." 6 34
-        tlvs=("${tlvs[@]}")  # reindex
-        ;;
+      ADDIP)  local sc ip hexv tlv; sc=$($DIALOG --inputbox "Sub-option CODE (0–255) — for Cisco WLC use 241 (0xF1)" 8 60 "241" 3>&1 1>&2 2>&3) || continue; sc=$(trim "$sc"); [[ $sc =~ ^[0-9]+$ && $sc -le 255 ]] || { $DIALOG --msgbox "Enter 0–255." 6 30; continue; }; ip=$($DIALOG --inputbox "IPv4 address value" 8 50 "" 3>&1 1>&2 2>&3) || continue; ip=$(trim "$ip"); ip_ok "$ip" || { $DIALOG --msgbox "Invalid IPv4." 6 30; continue; }; hexv=$(ip_to_hex "$ip"); tlv=$(compose_tlv "$sc" "$hexv") || { $DIALOG --msgbox "Failed to compose TLV." 6 40; continue; }; tlvs+=("code=$sc ip=$ip  -> $tlv"); ;;
+      ADDSTR) local sc s hexv tlv; sc=$($DIALOG --inputbox "Sub-option CODE (0–255)" 8 50 "" 3>&1 1>&2 2>&3) || continue; sc=$(trim "$sc"); [[ $sc =~ ^[0-9]+$ && $sc -le 255 ]] || { $DIALOG --msgbox "Enter 0–255." 6 30; continue; }; s=$($DIALOG --inputbox "ASCII string value" 8 60 "" 3>&1 1>&2 2>&3) || continue; s=$(trim "$s"); [[ -n $s ]] || { $DIALOG --msgbox "Enter a value." 6 30; continue; }; hexv=$(ascii_to_hex "$s"); tlv=$(compose_tlv "$sc" "$hexv") || { $DIALOG --msgbox "String too long (>255 bytes)." 6 50; continue; }; tlvs+=("code=$sc str=\"$s\"  -> $tlv"); ;;
+      ADDHEX) local sc hexv tlv; sc=$($DIALOG --inputbox "Sub-option CODE (0–255)" 8 50 "" 3>&1 1>&2 2>&3) || continue; sc=$(trim "$sc"); [[ $sc =~ ^[0-9]+$ && $sc -le 255 ]] || { $DIALOG --msgbox "Enter 0–255." 6 30; continue; }; hexv=$(read_hex_pairs "Enter raw HEX bytes for sub-option $sc") || continue; tlv=$(compose_tlv "$sc" "$hexv") || { $DIALOG --msgbox "Value too long (>255 bytes)." 6 50; continue; }; tlvs+=("code=$sc hex=$hexv  -> $tlv"); ;;
+      ADDU8|ADDU16|ADDU32) local sc num hexv tlv max; sc=$($DIALOG --inputbox "Sub-option CODE (0–255)" 8 50 "" 3>&1 1>&2 2>&3) || continue; sc=$(trim "$sc"); [[ $sc =~ ^[0-9]+$ && $sc -le 255 ]] || { $DIALOG --msgbox "Enter 0–255." 6 30; continue; }; case "$choice" in ADDU8) max=255 ;; ADDU16) max=65535 ;; ADDU32) max=4294967295 ;; esac; num=$($DIALOG --inputbox "Unsigned integer (0–$max)" 8 60 "" 3>&1 1>&2 2>&3) || continue; num=$(trim "$num"); [[ $num =~ ^[0-9]+$ && $num -le $max ]] || { $DIALOG --msgbox "Enter 0–$max." 6 45; continue; }; if [[ "$choice" == "ADDU8" ]]; then printf -v hexv "%02x" "$num"; elif [[ "$choice" == "ADDU16" ]]; then printf -v hexv "%04x" "$num"; hexv="${hexv:0:2}:${hexv:2:2}"; else printf -v hexv "%08x" "$num"; hexv="${hexv:0:2}:${hexv:2:2}:${hexv:4:2}:${hexv:6:2}"; fi; tlv=$(compose_tlv "$sc" "$hexv") || { $DIALOG --msgbox "Failed to compose TLV." 6 40; continue; }; tlvs+=("code=$sc $choice=$num  -> $tlv"); ;;
+      DELLAST) ((${#tlvs[@]})) && unset 'tlvs[${#tlvs[@]}-1]' || $DIALOG --msgbox "No TLVs to delete." 6 34; tlvs=("${tlvs[@]}") ;;
       CLEAR) tlvs=() ;;
-      DONE)
-        if ((${#tlvs[@]})); then
-          tlv_hex=""
-          for line in "${tlvs[@]}"; do tlv_hex+="${tlv_hex:+:}${line##*-> }"; done
-          OPT43_HEX="$tlv_hex"
-        fi
-        break
-        ;;
+      DONE) if ((${#tlvs[@]})); then tlv_hex=""; for line in "${tlvs[@]}"; do tlv_hex+="${tlv_hex:+:}${line##*-> }"; done; echo "$tlv_hex"; fi; break ;;
     esac
-  done
-}
+  done }
 
-# Main options menu
-while :; do
-  CHOICE=$($DIALOG --menu "Add optional DHCP options (repeat as needed), or Done.\nSelected so far:\n${OPTION_LINES:-<none>}\n${OPT43_HEX:+\nOption 43 hex:\n  $OPT43_HEX}" 24 96 16 \
-    DNS     "Option 6   - domain-name-servers (IP list)" \
-    DN      "Option 15  - domain-name (FQDN)" \
-    DOMSRCH "Option 119 - domain-search (list of FQDNs)" \
-    NTP     "Option 42  - ntp-servers (IP list)" \
-    TFTP66  "Option 66  - tftp-server-name (string)" \
-    OPT150  "Option 150 - TFTP server IPs (array of ip)" \
-    OPT160  "Option 160 - provisioning server (string)" \
-    OPT161  "Option 161 - provisioning path/URL (string)" \
-    OPT162  "Option 162 - provisioning URL (string)" \
-    OPT43F1 "Option 43  - Cisco WLC discovery (f1) — simple" \
-    OPT43B  "Option 43  - TLV builder (advanced)" \
-    BOOT    "Option 67  - bootfile-name (string)" \
-    WINS    "Option 44  - netbios-name-servers (IP list)" \
-    NBT     "Option 46  - netbios-node-type (1=B,2=P,4=M,8=H)" \
-    USER    "User-defined option (code → type → value incl. hex-string)" \
-    DONE    "Finished adding options" \
-    3>&1 1>&2 2>&3) || CHOICE="DONE"
+scope_creator_menu(){
+  need_root; cmd_exists "$DIALOG" || die "dialog is not installed."; cmd_exists dhcpd || die "ISC DHCP (dhcpd) is not installed."; [[ -f "$CONF" ]] || die "$CONF not found."; ensure_optfile; : > "$LOG"
 
-  case "$CHOICE" in
-    DNS)
-      IPS=$(read_ip_list "Domain Name Servers") || continue
-      OPTION_LINES+=$'\n        option domain-name-servers '"$IPS"';'
-      ;;
-    DN)
-      while :; do
-        DNVAL=$($DIALOG --inputbox "Domain name (e.g. example.local)" 8 60 "" 3>&1 1>&2 2>&3) || { DNVAL=""; break; }
-        DNVAL=$(trim "$DNVAL"); valid_domain "$DNVAL" || { $DIALOG --msgbox "Invalid FQDN." 6 40; continue; }
-        OPTION_LINES+=$'\n        option domain-name '"$DNVAL"';'
-        break
-      done
-      ;;
-    DOMSRCH)
-      DOMS=$(read_domain_list) || continue
-      OPTION_LINES+=$'\n        option domain-search '"$DOMS"';'
-      ;;
-    NTP)
-      IPS=$(read_ip_list "NTP servers") || continue
-      OPTION_LINES+=$'\n        option ntp-servers '"$IPS"';'
-      ;;
-    TFTP66)
-      while :; do
-        TFTP_NAME=$($DIALOG --inputbox "TFTP server name (FQDN/hostname)" 8 60 "" 3>&1 1>&2 2>&3) || { TFTP_NAME=""; break; }
-        TFTP_NAME=$(trim "$TFTP_NAME"); [[ -n $TFTP_NAME ]] || { $DIALOG --msgbox "Enter a server name." 6 40; continue; }
-        OPTION_LINES+=$'\n        option tftp-server-name '"'"'"$(escape_dhcp_string "$TFTP_NAME")'"'"'";'
-        break
-      done
-      ;;
-    OPT150)
-      IFS='|' read -r ONAME OTYPE <<<"$(ensure_named_code_with_type 'tftp-server-address' 150 'array of ip-address')"
-      IPS=$(read_ip_list "TFTP server IP(s) for option 150") || true
-      [[ -n ${IPS:-} ]] && OPTION_LINES+=$'\n        option '"$ONAME"' '"$IPS"';'
-      ;;
-    OPT160)
-      IFS='|' read -r ONAME OTYPE <<<"$(ensure_code_with_type 160 'string')"
-      while :; do
-        VAL=$($DIALOG --inputbox "Option 160 value (string/FQDN/URL)" 8 70 "" 3>&1 1>&2 2>&3) || { VAL=""; break; }
-        VAL=$(trim "$VAL"); [[ -n $VAL ]] || { $DIALOG --msgbox "Enter a value." 6 35; continue; }
-        OPTION_LINES+=$'\n        option '"$ONAME"' '"'"'"$(escape_dhcp_string "$VAL")'"'"'";'
-        break
-      done
-      ;;
-    OPT161)
-      IFS='|' read -r ONAME OTYPE <<<"$(ensure_code_with_type 161 'string')"
-      while :; do
-        VAL=$($DIALOG --inputbox "Option 161 value (string/URL/path)" 8 70 "" 3>&1 1>&2 2>&3) || { VAL=""; break; }
-        VAL=$(trim "$VAL"); [[ -n $VAL ]] || { $DIALOG --msgbox "Enter a value." 6 35; continue; }
-        OPTION_LINES+=$'\n        option '"$ONAME"' '"'"'"$(escape_dhcp_string "$VAL")'"'"'";'
-        break
-      done
-      ;;
-    OPT162)
-      IFS='|' read -r ONAME OTYPE <<<"$(ensure_code_with_type 162 'string')"
-      while :; do
-        VAL=$($DIALOG --inputbox "Option 162 value (string/URL)" 8 70 "" 3>&1 1>&2 2>&3) || { VAL=""; break; }
-        VAL=$(trim "$VAL"); [[ -n $VAL ]] || { $DIALOG --msgbox "Enter a value." 6 35; continue; }
-        OPTION_LINES+=$'\n        option '"$ONAME"' '"'"'"$(escape_dhcp_string "$VAL")'"'"'";'
-        break
-      done
-      ;;
-    OPT43F1)
-      cisco_f1_wizard || true
-      ;;
-    OPT43B)
-      build_opt43_generic
-      ;;
-    BOOT)
-      while :; do
-        BOOTNAME=$($DIALOG --inputbox "Bootfile name (e.g. pxelinux.0 or bootx64.efi)" 8 60 "" 3>&1 1>&2 2>&3) || { BOOTNAME=""; break; }
-        BOOTNAME=$(trim "$BOOTNAME"); [[ -n $BOOTNAME ]] || { $DIALOG --msgbox "Enter a filename." 6 35; continue; }
-        OPTION_LINES+=$'\n        option bootfile-name '"'"'"$(escape_dhcp_string "$BOOTNAME")'"'"'";'
-        break
-      done
-      ;;
-    WINS)
-      IPS=$(read_ip_list "NetBIOS (WINS) servers") || continue
-      OPTION_LINES+=$'\n        option netbios-name-servers '"$IPS"';'
-      ;;
-    NBT)
-      NTYPE=$($DIALOG --menu "NetBIOS node type" 12 50 4 1 "B-node (broadcast)" 2 "P-node (peer WINS)" 4 "M-node (broadcast+peer)" 8 "H-node (hybrid)" 3>&1 1>&2 2>&3) || continue
-      OPTION_LINES+=$'\n        option netbios-node-type '"$NTYPE"';'
-      ;;
-    USER)
-      while :; do
-        UCODE=$($DIALOG --inputbox "Custom option CODE (1–254)\n(e.g., 151, 160, 193…)" 9 60 "" 3>&1 1>&2 2>&3) || { UCODE=""; break; }
-        UCODE=$(trim "$UCODE"); [[ $UCODE =~ ^[0-9]+$ && $UCODE -ge 1 && $UCODE -le 254 ]] || { $DIALOG --msgbox "Enter a number between 1 and 254." 6 48; continue; }
-        break
-      done
-      [[ -z ${UCODE:-} ]] && continue
-      DEF=$(find_option_def_by_code "$UCODE" || true)
-      if [[ -n "${DEF:-}" ]]; then
-        IFS='|' read -r ONAME OTYPE <<<"$DEF"
-        $DIALOG --msgbox "Option $UCODE is already defined as:\n\nname: $ONAME\ntype: $OTYPE\n\nWe'll reuse this definition." 12 60
-      else
-        OTYPE=$($DIALOG --menu "Select type for option code $UCODE" 16 64 9 \
+  # Sanitize existing conf first (single quotes, etc.)
+  sanitize_domain_lines "$CONF"
+
+  # Collect subnet info
+  while :; do SUBNETNETWORK=$($DIALOG --inputbox "Subnet network (e.g. 192.168.25.0)" 8 60 "" 3>&1 1>&2 2>&3) || return 0; ip_ok "$SUBNETNETWORK" || { $DIALOG --msgbox "Invalid IPv4 address." 6 45; continue; }; break; done
+  while :; do DHCPNETMASK=$($DIALOG --inputbox "Subnet mask (e.g. 255.255.255.0)" 8 60 "" 3>&1 1>&2 2>&3) || return 0; mask_ok "$DHCPNETMASK" || { $DIALOG --msgbox "Invalid or non-contiguous mask." 6 55; continue; }; (( ( $(ip2int "$SUBNETNETWORK") & $(ip2int "$DHCPNETMASK") ) == ( $(ip2int "$SUBNETNETWORK") ) )) || { $DIALOG --msgbox "Network is not aligned to this mask." 6 55; continue; }; break; done
+  while :; do DHCPBEGIP=$($DIALOG --inputbox "Lease range START (e.g. 192.168.25.50)" 8 60 "" 3>&1 1>&2 2>&3) || return 0; ip_ok "$DHCPBEGIP" && in_subnet "$DHCPBEGIP" "$SUBNETNETWORK" "$DHCPNETMASK" && not_net_or_bcast "$DHCPBEGIP" "$SUBNETNETWORK" "$DHCPNETMASK" || { $DIALOG --msgbox "Start IP must be a valid host in the subnet." 6 60; continue; }; break; done
+  while :; do DHCPENDIP=$($DIALOG --inputbox "Lease range END (e.g. 192.168.25.200)" 8 60 "" 3>&1 1>&2 2>&3) || return 0; ip_ok "$DHCPENDIP" && in_subnet "$DHCPENDIP" "$SUBNETNETWORK" "$DHCPNETMASK" && not_net_or_bcast "$DHCPENDIP" "$SUBNETNETWORK" "$DHCPNETMASK" || { $DIALOG --msgbox "End IP must be a valid host in the subnet." 6 60; continue; }; (( $(ip2int "$DHCPBEGIP") <= $(ip2int "$DHCPENDIP") )) || { $DIALOG --msgbox "Start IP must be <= End IP." 6 45; continue; }; break; done
+  while :; do DHCPDEFGW=$($DIALOG --inputbox "Default gateway (e.g. 192.168.25.1)" 8 60 "" 3>&1 1>&2 2>&3) || return 0; ip_ok "$DHCPDEFGW" && in_subnet "$DHCPDEFGW" "$SUBNETNETWORK" "$DHCPNETMASK" && not_net_or_bcast "$DHCPDEFGW" "$SUBNETNETWORK" "$DHCPNETMASK" || { $DIALOG --msgbox "Gateway must be a valid host in the subnet." 6 60; continue; }; break; done
+  SUBNETDESC=$($DIALOG --inputbox "Description (comment)" 8 60 "" 3>&1 1>&2 2>&3) || return 0
+
+  OPTION_LINES=""; OPT43_HEX=""
+
+  while :; do
+    CH=$($DIALOG --menu "Add optional DHCP options (repeat as needed), or Done.\nSelected so far:\n${OPTION_LINES:-<none>}\n${OPT43_HEX:+\nOption 43 hex:\n  $OPT43_HEX}" 24 96 16 \
+      DNS     "Option 6   - domain-name-servers (IP list)" \
+      DN      "Option 15  - domain-name (FQDN)" \
+      DOMSRCH "Option 119 - domain-search (list of FQDNs)" \
+      NTP     "Option 42  - ntp-servers (IP list)" \
+      TFTP66  "Option 66  - tftp-server-name (string)" \
+      OPT150  "Option 150 - TFTP server IPs (array of ip)" \
+      OPT160  "Option 160 - provisioning server (string)" \
+      OPT161  "Option 161 - provisioning path/URL (string)" \
+      OPT162  "Option 162 - provisioning URL (string)" \
+      OPT43F1 "Option 43  - Cisco WLC discovery (f1) — simple" \
+      OPT43B  "Option 43  - TLV builder (advanced)" \
+      BOOT    "Option 67  - bootfile-name (string)" \
+      WINS    "Option 44  - netbios-name-servers (IP list)" \
+      NBT     "Option 46  - netbios-node-type (1=B,2=P,4=M,8=H)" \
+      USER    "User-defined option (code → type → value incl. hex-string)" \
+      DONE    "Finished adding options" \
+      3>&1 1>&2 2>&3) || CH="DONE"
+
+    case "$CH" in
+      DNS)    IPS=$(read_ip_list "Domain Name Servers") || continue; OPTION_LINES+=$'\n        option domain-name-servers '"$IPS"';' ;;
+      DN)     while :; do DNVAL=$($DIALOG --inputbox "Domain name (e.g. example.local)" 8 60 "" 3>&1 1>&2 2>&3) || { DNVAL=""; break; }; DNVAL=$(trim "$DNVAL"); valid_domain "$DNVAL" || { $DIALOG --msgbox "Invalid FQDN." 6 40; continue; }; OPTION_LINES+=$(printf '\n        option domain-name "%s";' "$(escape_dhcp_string "$DNVAL")"); break; done ;;
+      DOMSRCH) DOMS=$(read_domain_list) || continue; OPTION_LINES+=$'\n        option domain-search '"$DOMS"';' ;;
+      NTP)    IPS=$(read_ip_list "NTP servers") || continue; OPTION_LINES+=$'\n        option ntp-servers '"$IPS"';' ;;
+      TFTP66) while :; do TFTP_NAME=$($DIALOG --inputbox "TFTP server name (FQDN/hostname)" 8 60 "" 3>&1 1>&2 2>&3) || { TFTP_NAME=""; break; }; TFTP_NAME=$(trim "$TFTP_NAME"); [[ -n $TFTP_NAME ]] || { $DIALOG --msgbox "Enter a server name." 6 40; continue; }; OPTION_LINES+=$(printf '\n        option tftp-server-name "%s";' "$(escape_dhcp_string "$TFTP_NAME")"); break; done ;;
+      OPT150) IFS='|' read -r ONAME OTYPE <<<"$(ensure_named_code_with_type 'tftp-server-address' 150 'array of ip-address')"; IPS=$(read_ip_list "TFTP server IP(s) for option 150") || true; [[ -n ${IPS:-} ]] && OPTION_LINES+=$'\n        option '"$ONAME"' '"$IPS"';' ;;
+      OPT160) IFS='|' read -r ONAME OTYPE <<<"$(ensure_code_with_type 160 'string')"; while :; do VAL=$($DIALOG --inputbox "Option 160 value (string/FQDN/URL)" 8 70 "" 3>&1 1>&2 2>&3) || { VAL=""; break; }; VAL=$(trim "$VAL"); [[ -n $VAL ]] || { $DIALOG --msgbox "Enter a value." 6 35; continue; }; OPTION_LINES+=$(printf '\n        option %s "%s";' "$ONAME" "$(escape_dhcp_string "$VAL")"); break; done ;;
+      OPT161) IFS='|' read -r ONAME OTYPE <<<"$(ensure_code_with_type 161 'string')"; while :; do VAL=$($DIALOG --inputbox "Option 161 value (string/URL/path)" 8 70 "" 3>&1 1>&2 2>&3) || { VAL=""; break; }; VAL=$(trim "$VAL"); [[ -n $VAL ]] || { $DIALOG --msgbox "Enter a value." 6 35; continue; }; OPTION_LINES+=$(printf '\n        option %s "%s";' "$ONAME" "$(escape_dhcp_string "$VAL")"); break; done ;;
+      OPT162) IFS='|' read -r ONAME OTYPE <<<"$(ensure_code_with_type 162 'string')"; while :; do VAL=$($DIALOG --inputbox "Option 162 value (string/URL)" 8 70 "" 3>&1 1>&2 2>&3) || { VAL=""; break; }; VAL=$(trim "$VAL"); [[ -n $VAL ]] || { $DIALOG --msgbox "Enter a value." 6 35; continue; }; OPTION_LINES+=$(printf '\n        option %s "%s";' "$ONAME" "$(escape_dhcp_string "$VAL")"); break; done ;;
+      OPT43F1) OPT43_HEX="$(cisco_f1_wizard || true)" ;;
+      OPT43B)  OPT43_HEX="$(build_opt43_generic || true)" ;;
+      BOOT)    while :; do BOOTNAME=$($DIALOG --inputbox "Bootfile name (e.g. pxelinux.0 or bootx64.efi)" 8 60 "" 3>&1 1>&2 2>&3) || { BOOTNAME=""; break; }; BOOTNAME=$(trim "$BOOTNAME"); [[ -n $BOOTNAME ]] || { $DIALOG --msgbox "Enter a filename." 6 35; continue; }; OPTION_LINES+=$(printf '\n        option bootfile-name "%s";' "$(escape_dhcp_string "$BOOTNAME")"); break; done ;;
+      WINS)   IPS=$(read_ip_list "NetBIOS (WINS) servers") || continue; OPTION_LINES+=$'\n        option netbios-name-servers '"$IPS"';' ;;
+      NBT)    NTYPE=$($DIALOG --menu "NetBIOS node type" 12 50 4 1 "B-node (broadcast)" 2 "P-node (peer WINS)" 4 "M-node (broadcast+peer)" 8 "H-node (hybrid)" 3>&1 1>&2 2>&3) || continue; OPTION_LINES+=$'\n        option netbios-node-type '"$NTYPE"';' ;;
+      USER)   while :; do UCODE=$($DIALOG --inputbox "Custom option CODE (1–254)\n(e.g., 151, 160, 193…)" 9 60 "" 3>&1 1>&2 2>&3) || { UCODE=""; break; }; UCODE=$(trim "$UCODE"); [[ $UCODE =~ ^[0-9]+$ && $UCODE -ge 1 && $UCODE -le 254 ]] || { $DIALOG --msgbox "Enter a number between 1 and 254." 6 48; continue; }; break; done; [[ -z ${UCODE:-} ]] && continue; DEF=$(find_option_def_by_code "$UCODE" || true); if [[ -n "${DEF:-}" ]]; then IFS='|' read -r ONAME OTYPE <<<"$DEF"; $DIALOG --msgbox "Option $UCODE is already defined as:\n\nname: $ONAME\ntype: $OTYPE\n\nWe'll reuse this definition." 12 60; else OTYPE=$($DIALOG --menu "Select type for option code $UCODE" 16 64 9 \
           "ip-address"           "Single IPv4" \
           "array of ip-address"  "IPv4 list" \
           "string"               "String/FQDN/URL (quoted)" \
@@ -787,77 +468,29 @@ while :; do
           "uint32"               "Integer 0–4294967295" \
           "boolean"              "true/false" \
           "hex-string"           "Raw hex bytes (aa:bb:cc)" \
-          3>&1 1>&2 2>&3) || continue
-        IFS='|' read -r ONAME _ <<<"$(ensure_code_with_type "$UCODE" "$OTYPE")"
-      fi
-      case "$OTYPE" in
-        "ip-address")
-          while :; do
-            UIP=$($DIALOG --inputbox "Value for option $ONAME (single IPv4)" 8 60 "" 3>&1 1>&2 2>&3) || { UIP=""; break; }
-            UIP=$(trim "$UIP"); ip_ok "$UIP" || { $DIALOG --msgbox "Invalid IPv4." 6 30; continue; }
-            OPTION_LINES+=$'\n        option '"$ONAME"' '"$UIP"';'
-            break
-          done
-          ;;
-        "array of ip-address")
-          UILIST=$(read_ip_list "Values for option $ONAME (comma-separated IPs)") || true
-          [[ -n ${UILIST:-} ]] && OPTION_LINES+=$'\n        option '"$ONAME"' '"$UILIST"';'
-          ;;
-        "string")
-          while :; do
-            USTR=$($DIALOG --inputbox "Value for option $ONAME (string/FQDN/URL)" 8 70 "" 3>&1 1>&2 2>&3) || { USTR=""; break; }
-            USTR=$(trim "$USTR"); [[ -n $USTR ]] || { $DIALOG --msgbox "Enter a value." 6 30; continue; }
-            OPTION_LINES+=$'\n        option '"$ONAME"' '"'"'"$(escape_dhcp_string "$USTR")'"'"'";'
-            break
-          done
-          ;;
-        "domain-name")
-          while :; do
-            UFQDN=$($DIALOG --inputbox "Value for option $ONAME (FQDN, unquoted)" 8 70 "" 3>&1 1>&2 2>&3) || { UFQDN=""; break; }
-            UFQDN=$(trim "$UFQDN"); valid_domain "$UFQDN" || { $DIALOG --msgbox "Invalid FQDN." 6 40; continue; }
-            OPTION_LINES+=$'\n        option '"$ONAME"' '"$UFQDN"';'
-            break
-          done
-          ;;
-        "uint8"|"uint16"|"uint32")
-          MAX=255; [[ $OTYPE == "uint16" ]] && MAX=65535; [[ $OTYPE == "uint32" ]] && MAX=4294967295
-          while :; do
-            UNUM=$($DIALOG --inputbox "Value for option $ONAME ($OTYPE 0–$MAX)" 8 60 "" 3>&1 1>&2 2>&3) || { UNUM=""; break; }
-            UNUM=$(trim "$UNUM"); [[ $UNUM =~ ^[0-9]+$ && $UNUM -le $MAX ]] || { $DIALOG --msgbox "Enter a number 0–$MAX." 6 40; continue; }
-            OPTION_LINES+=$'\n        option '"$ONAME"' '"$UNUM"';'
-            break
-          done
-          ;;
-        "boolean")
-          BVAL=$($DIALOG --menu "Value for option $ONAME" 10 40 2 true "true" false "false" 3>&1 1>&2 2>&3) || continue
-          OPTION_LINES+=$'\n        option '"$ONAME"' '"$BVAL"';'
-          ;;
-        "hex-string")
-          HEX=$(read_hex_pairs "Value for option $ONAME (raw hex bytes)") || true
-          [[ -n ${HEX:-} ]] && OPTION_LINES+=$'\n        option '"$ONAME"' '"$HEX"';'
-          ;;
-      esac
-      ;;
-    DONE)
-      break
-      ;;
-  esac
-done
+          3>&1 1>&2 2>&3) || continue; IFS='|' read -r ONAME _ <<<"$(ensure_code_with_type "$UCODE" "$OTYPE")"; fi; case "$OTYPE" in \
+        "ip-address") while :; do UIP=$($DIALOG --inputbox "Value for option $ONAME (single IPv4)" 8 60 "" 3>&1 1>&2 2>&3) || { UIP=""; break; }; UIP=$(trim "$UIP"); ip_ok "$UIP" || { $DIALOG --msgbox "Invalid IPv4." 6 30; continue; }; OPTION_LINES+=$'\n        option '"$ONAME"' '"$UIP"; break; done ;;
+        "array of ip-address") UILIST=$(read_ip_list "Values for option $ONAME (comma-separated IPs)") || true; [[ -n ${UILIST:-} ]] && OPTION_LINES+=$'\n        option '"$ONAME"' '"$UILIST"; ;;
+        "string") while :; do USTR=$($DIALOG --inputbox "Value for option $ONAME (string/FQDN/URL)" 8 70 "" 3>&1 1>&2 2>&3) || { USTR=""; break; }; USTR=$(trim "$USTR"); [[ -n $USTR ]] || { $DIALOG --msgbox "Enter a value." 6 30; continue; }; OPTION_LINES+=$(printf '\n        option %s "%s";' "$ONAME" "$(escape_dhcp_string "$USTR")"); break; done ;;
+        "domain-name") while :; do UFQDN=$($DIALOG --inputbox "Value for option $ONAME (FQDN, unquoted)" 8 70 "" 3>&1 1>&2 2>&3) || { UFQDN=""; break; }; UFQDN=$(trim "$UFQDN"); valid_domain "$UFQDN" || { $DIALOG --msgbox "Invalid FQDN." 6 40; continue; }; OPTION_LINES+=$'\n        option '"$ONAME"' '"$UFQDN"; break; done ;;
+        "uint8"|"uint16"|"uint32") MAX=255; [[ $OTYPE == "uint16" ]] && MAX=65535; [[ $OTYPE == "uint32" ]] && MAX=4294967295; while :; do UNUM=$($DIALOG --inputbox "Value for option $ONAME ($OTYPE 0–$MAX)" 8 60 "" 3>&1 1>&2 2>&3) || { UNUM=""; break; }; UNUM=$(trim "$UNUM"); [[ $UNUM =~ ^[0-9]+$ && $UNUM -le $MAX ]] || { $DIALOG --msgbox "Enter a number 0–$MAX." 6 40; continue; }; OPTION_LINES+=$'\n        option '"$ONAME"' '"$UNUM"; break; done ;;
+        "boolean") BVAL=$($DIALOG --menu "Value for option $ONAME" 10 40 2 true "true" false "false" 3>&1 1>&2 2>&3) || continue; OPTION_LINES+=$'\n        option '"$ONAME"' '"$BVAL"; ;;
+        "hex-string") HEX=$(read_hex_pairs "Value for option $ONAME (raw hex bytes)") || true; [[ -n ${HEX:-} ]] && OPTION_LINES+=$'\n        option '"$ONAME"' '"$HEX"; ;;
+      esac ;;
+      DONE) break ;;
+    esac
+  done
 
-# If we built Option 43, add it (ISC dhcpd syntax wants colon-separated hex pairs)
-[[ -n "${OPT43_HEX:-}" ]] && OPTION_LINES+=$'\n        option vendor-encapsulated-options '"$OPT43_HEX"';'
+  [[ -n "${OPT43_HEX:-}" ]] && OPTION_LINES+=$'\n        option vendor-encapsulated-options '"$OPT43_HEX";
 
-# Summary
-SUMMARY="About to add:\n\nSubnet:    $SUBNETNETWORK\nMask:      $DHCPNETMASK\nRange:     $DHCPBEGIP  -  $DHCPENDIP\nGateway:   $DHCPDEFGW\nComment:   $SUBNETDESC\n\nExtra options:${OPTION_LINES:-\n        (none)}\n\nProceed?"
-$DIALOG --yesno "$SUMMARY" 22 96 || exit 0
+  SUMMARY="About to add:\n\nSubnet:    $SUBNETNETWORK\nMask:      $DHCPNETMASK\nRange:     $DHCPBEGIP  -  $DHCPENDIP\nGateway:   $DHCPDEFGW\nComment:   $SUBNETDESC\n\nExtra options:${OPTION_LINES:-\n        (none)}\n\nProceed?"
+  $DIALOG --yesno "$SUMMARY" 22 96 || return 0
 
-# Warn if the exact subnet exists already
-grep -Eq "^[[:space:]]*subnet[[:space:]]+$SUBNETNETWORK[[:space:]]+netmask[[:space:]]+$DHCPNETMASK[[:space:]]*\{" "$CONF" \
-  && $DIALOG --yesno "A subnet $SUBNETNETWORK netmask $DHCPNETMASK already exists in $CONF.\nAdd another range/options anyway?" 10 70 || true
+  grep -Eq "^[[:space:]]*subnet[[:space:]]+$SUBNETNETWORK[[:space:]]+netmask[[:space:]]+$DHCPNETMASK[[:space:]]*\{" "$CONF" \
+    && $DIALOG --yesno "A subnet $SUBNETNETWORK netmask $DHCPNETMASK already exists in $CONF.\nAdd another range/options anyway?" 10 70 || true
 
-# Build subnet snippet
-SNIPPET=$(mktemp)
-cat >"$SNIPPET" <<EOF
+  local SNIPPET; SNIPPET=$(mktemp)
+  cat >"$SNIPPET" <<EOF
 
 # $SUBNETDESC
 subnet $SUBNETNETWORK netmask $DHCPNETMASK {
@@ -867,42 +500,25 @@ subnet $SUBNETNETWORK netmask $DHCPNETMASK {
 }
 EOF
 
-# Build temp test config (include OPTFILE first), validate
-TESTCONF=$(mktemp)
-{
-  echo "include \"$OPTFILE\";"
-  echo
-  cat "$CONF"
-  cat "$SNIPPET"
-} > "$TESTCONF"
+  local TESTCONF; TESTCONF=$(mktemp)
+  { echo "include \"$OPTFILE\";"; echo; cat "$CONF"; cat "$SNIPPET"; } > "$TESTCONF"
 
-echo -e "\n--- testing with: $TESTCONF ---" >> "$LOG"
-if test_dhcpd_conf "$TESTCONF"; then
-  backup_conf || die "Backup failed."
-  ensure_include_line
-  cat "$SNIPPET" >> "$CONF" || die "Could not write subnet to $CONF."
-  $DIALOG --msgbox "Configuration validated and written.\n- Subnet appended to $CONF\n- Custom option definitions in $OPTFILE" 10 80
-else
-  echo "---- tail of test conf ----" >> "$LOG"; tail -n 120 "$TESTCONF" >> "$LOG"
-  ERR=$(tail -n 80 "$LOG")
-  $DIALOG --msgbox "Config test FAILED.\n\nLast dhcpd output:\n\n$ERR" 22 92
-  rm -f "$SNIPPET" "$TESTCONF"
-  exit 1
-fi
-
-# Restart?
-$DIALOG --yesno "Restart $SERVICE now?" 7 40
-if [[ $? -eq 0 ]]; then
-  restart_dhcpd
-  if systemctl is-active --quiet "$SERVICE"; then
-    $DIALOG --msgbox "$SERVICE restarted successfully." 6 42
+  echo -e "\n--- testing with: $TESTCONF ---" >> "$LOG"
+  if validate_conf "$TESTCONF"; then
+    backup_conf || die "Backup failed."
+    ensure_include_line
+    cat "$SNIPPET" >> "$CONF" || die "Could not write subnet to $CONF."
+    $DIALOG --msgbox "Configuration validated and written.\n- Subnet appended to $CONF\n- Custom option definitions in $OPTFILE" 10 80
   else
-    $DIALOG --msgbox "Failed to restart $SERVICE.\nSee $LOG" 7 52
+    echo "---- tail of test conf ----" >> "$LOG"; tail -n 120 "$TESTCONF" >> "$LOG"
+    ERR=$(tail -n 80 "$LOG")
+    $DIALOG --msgbox "Config test FAILED.\n\nLast dhcpd output:\n\n$ERR" 22 92
+    rm -f "$SNIPPET" "$TESTCONF"
+    return 1
   fi
-fi
 
-rm -f "$SNIPPET" "$TESTCONF"
-clear
+  $DIALOG --yesno "Restart $(detect_service) now?" 7 40 && restart_service "$(detect_service)"
+  rm -f "$SNIPPET" "$TESTCONF"
 }
 
 # ==========================================================
@@ -914,8 +530,8 @@ main_menu(){
   cmd_exists dhcpd    || die "ISC DHCP (dhcpd) is not installed."
   local svc; svc=$(detect_service)
   while :; do
-    CH=$($DIALOG --menu "DHCP Manager Suite\nConfig: $CONF\nService: $svc" 18 72 10 \
-      1 "Create DHCP Scope (paste-in placeholder)" \
+    CH=$($DIALOG --menu "DHCP Manager Suite\nConfig: $CONF\nService: $svc" 18 76 10 \
+      1 "Create DHCP Scope & Options" \
       2 "Delete Scope(s) from dhcpd.conf" \
       3 "Edit dhcpd.conf (validate, save, restart)" \
       4 "View Leases (raw/active/last/live/search)" \
