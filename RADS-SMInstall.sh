@@ -1,55 +1,61 @@
-#!/bin/sh
-#RADS-SMINstall.sh
-#This script installs a set of scripts for AD/DHCP Management
+#!/bin/bash
+set -Eeuo pipefail
 
-TEXTRESET=$(tput sgr0)
-RED=$(tput setaf 1)
-YELLOW=$(tput setaf 3)
-GREEN=$(tput setaf 2)
-USER=$(whoami)
-MAJOROS=$(cat /etc/redhat-release | grep -Eo "[0-9]" | sed '$d')
-
-#Checking for user permissions
-if [ "$USER" = "root" ]; then
-echo " "
+# Colors only when stdout is a TTY (so logs aren’t full of escapes)
+if [[ -t 1 ]]; then
+  TEXTRESET=$(tput sgr0); RED=$(tput setaf 1); YELLOW=$(tput setaf 3); GREEN=$(tput setaf 2)
 else
-  echo ${RED}"This program must be run as root ${TEXTRESET}"
-  echo "Exiting"
+  TEXTRESET=""; RED=""; YELLOW=""; GREEN=""
 fi
-#Checking for version Information
-if [ "$MAJOROS" = "9" ]; then
-echo " "
-else
-  echo ${RED}"Sorry, but this installer only works on Rocky 9.X ${TEXTRESET}"
-  echo "Please upgrade to ${GREEN}Rocky 9.x${TEXTRESET}"
-  echo "Exiting the installer..."
-  exit
+
+# Root check
+if (( EUID != 0 )); then
+  echo "${RED}This program must be run as root.${TEXTRESET}" >&2
+  exit 1
+fi
+
+# Rocky 9+ check
+. /etc/os-release 2>/dev/null || true
+MAJOR="${VERSION_ID%%.*}"
+if [[ "${ID:-}" != rocky || -z "$MAJOR" || "$MAJOR" -lt 9 ]]; then
+  echo "${RED}Sorry, this installer supports Rocky Linux 9+ only.${TEXTRESET}" >&2
+  exit 1
 fi
 
 cat <<EOF
 ${GREEN}Installing Server Management${TEXTRESET}
-This Installer will provide a set of scripts wrapped in a dialog GUI
-You will be able to manage components of AD, DHCP and services
-At Anytime from the CLI, type ${YELLOW}server-manager${TEXTRESET}
+This installer provides a set of scripts wrapped in a dialog GUI.
+At any time from the CLI, run: ${YELLOW}server-manager${TEXTRESET}
 
-
-The installer will continue shortly
+Continuing...
 EOF
 
-sleep 7
-dnf -y install dialog nano htop iptraf-ng mc
-rm -r -f /root/.servman
-rm -f /usr/bin/server-manager
-sed -i '/usr/bin/server-manager/d' /root/.bash_profile
-cd /root/RADS-SMInstaller
-mv -v ./.servman /root
-chmod 700 /root/RADS-SMInstaller/server-manager
-mv -v /root/RADS-SMInstaller/server-manager /usr/bin/
-chmod -R 700 /root/.servman/
-echo "/usr/bin/server-manager" >>/root/.bash_profile
+sleep 2
 
-rm -r -f /root/RADS-SMInstaller
-rm -r -f /root/RADS-SMInstaller.sh
-pkill dialog 
-cd; cd -
-/usr/bin/server-manager
+# Dependencies (quiet)
+dnf -y install dialog nano htop iptraf-ng mc >/dev/null
+
+# Lay down files
+rm -rf /root/.servman
+rm -f  /usr/bin/server-manager
+sed -i '/\/usr\/bin\/server-manager/d' /root/.bash_profile || true
+
+cd /root/RADS-SMInstaller
+
+# Move payload and set perms
+mv -f ./.servman /root/
+install -m 700 server-manager /usr/bin/server-manager
+chmod -R 700 /root/.servman/
+
+# Optional: auto-launch on login (keep if you want this behavior)
+grep -q '/usr/bin/server-manager' /root/.bash_profile || echo '/usr/bin/server-manager' >>/root/.bash_profile
+
+# Cleanup the staging area
+rm -rf /root/RADS-SMInstaller
+rm -f  /root/RADS-SMInstaller.sh
+
+echo
+echo "${GREEN}Install completed.${TEXTRESET}"
+echo "You can launch with: server-manager"
+# IMPORTANT: Do not pkill dialog or start server-manager here.
+exit 0
