@@ -1,52 +1,42 @@
-#!/bin/sh
-#RADS-SMInstaller.sh #Bootstrap to GIT REPO
-TEXTRESET=$(tput sgr0)
-RED=$(tput setaf 1)
-YELLOW=$(tput setaf 3)
-GREEN=$(tput setaf 2)
-USER=$(whoami)
-MAJOROS=$(cat /etc/redhat-release | grep -Eo "[0-9]" | sed '$d')
+#!/usr/bin/env bash
+# RADS-SMInstaller.sh  — Bootstrap to Git repo and run RADS-SMInstall.sh
 
-#Checking for user permissions
-if [ "$USER" = "root" ]; then
-echo " "
-else
-  echo ${RED}"This program must be run as root ${TEXTRESET}"
-  echo "Exiting"
-fi
-#Checking for version Information
-if [ "$MAJOROS" = "9" ]; then
-echo " "
-else
-  echo ${RED}"Sorry, but this installer only works on Rocky 9.X ${TEXTRESET}"
-  echo "Please upgrade to ${GREEN}Rocky 9.x${TEXTRESET}"
-  echo "Exiting the installer..."
-  exit
+set -Eeuo pipefail
+umask 022
+
+REPO_URL="https://github.com/fumatchu/RADS-SM.git"
+DEST="/root/RADS-SMInstaller"
+
+# --- Require root ---
+if (( EUID != 0 )); then
+  echo "This program must be run as root." >&2
+  exit 1
 fi
 
-cat <<EOF
-${GREEN}**************************
-Please wait while we gather some files
-**************************${TEXTRESET}
+# --- Require Rocky Linux 9+ ---
+. /etc/os-release 2>/dev/null || true
+MAJOR="${VERSION_ID%%.*}"
+if [[ "${ID:-}" != "rocky" || -z "${MAJOR}" || "${MAJOR}" -lt 9 ]]; then
+  echo "This installer supports Rocky Linux 9+ only." >&2
+  exit 1
+fi
 
+echo "Installing prerequisites (git, wget)…"
+dnf -y install git wget >/dev/null
 
-${YELLOW}Installing wget and git${TEXTRESET}
-EOF
-sleep 1
+echo "Retrieving files from GitHub…"
+if [[ -d "$DEST/.git" ]]; then
+  # Update existing checkout
+  git -C "$DEST" fetch --depth=1 origin main >/dev/null
+  git -C "$DEST" reset --hard origin/main >/dev/null
+else
+  rm -rf "$DEST"
+  git clone --depth 1 "$REPO_URL" "$DEST" >/dev/null
+fi
 
-dnf -y install wget git
+# Ensure scripts are executable (best-effort)
+chmod 700 "$DEST"/RADS-SMInstall.sh 2>/dev/null || true
+chmod 700 "$DEST"/RA* 2>/dev/null || true
 
-cat <<EOF
-${YELLOW}*****************************
-Retrieving Files from GitHub
-*****************************${TEXTRESET}
-EOF
-
-mkdir /root/RADS-SM
-
-git clone https://github.com/fumatchu/RADS-SM.git /root/RADS-SMInstaller
-
-chmod 700 /root/RADS-SMInstaller/RA*
-clear
-
-/root/RADS-SMInstaller/RADS-SMInstall.sh
+echo "Launching RADS-SMInstall.sh…"
+exec "$DEST/RADS-SMInstall.sh"
