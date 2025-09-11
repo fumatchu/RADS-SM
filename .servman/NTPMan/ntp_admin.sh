@@ -292,7 +292,7 @@ chrony_menu_dialog() {
     2 "Manual: edit chrony.conf"
     3 "Allowed clients: manage chrony 'allow' entries"
     4 "View current Chrony status"
-    5 "Service Management"
+    5 "Service Control"
     6 "Quit"
   )
 
