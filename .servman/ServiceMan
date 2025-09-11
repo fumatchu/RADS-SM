@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Consistent backtitle everywhere
+shopt -s expand_aliases
+alias dialog='dialog --backtitle "Service Manager"'
+
 declare -A SERVICE_ADMIN_TOOLS=(
   [samba.service]="/root/.servman/SambaMan"
   [dhcpd.service]="/root/.servman/DHCPManager/dhcp-admin-dhcpd.sh"
@@ -8,10 +12,7 @@ declare -A SERVICE_ADMIN_TOOLS=(
   [kea-dhcp-ddns.service]="/root/.rfwb-admin/dhcp-admin.sh"
   [chronyd.service]="/root/.servman/NTPMan/ntp_admin.sh"
   [fail2ban.service]="/root/.servman/jail-admin.sh"
-  
 )
-
-
 
 # ─── Configuration ───────────────────────────────────────────────────────────
 CANDIDATE_UNITS=(
@@ -57,12 +58,12 @@ get_installed_units() {
 control_unit_menu() {
   local unit="$1"
   local admin_script=""
-local has_admin_script=false
+  local has_admin_script=false
 
-if [[ -n "${SERVICE_ADMIN_TOOLS[$unit]+_}" && -x "${SERVICE_ADMIN_TOOLS[$unit]}" ]]; then
-  admin_script="${SERVICE_ADMIN_TOOLS[$unit]}"
-  has_admin_script=true
-fi
+  if [[ -n "${SERVICE_ADMIN_TOOLS[$unit]+_}" && -x "${SERVICE_ADMIN_TOOLS[$unit]}" ]]; then
+    admin_script="${SERVICE_ADMIN_TOOLS[$unit]}"
+    has_admin_script=true
+  fi
 
   while true; do
     exec 3>&1; set +e
@@ -72,7 +73,6 @@ fi
       3 "Restart"
       4 "View Logs"
     )
-
     if [[ "$has_admin_script" == true ]]; then
       options+=(5 "Launch Admin Tool")
       options+=(6 "Back")
@@ -136,18 +136,16 @@ manage_units_menu() {
 
 # ─── Enable/Disable Services Submenu ──────────────────────────────────────────
 enable_disable_menu() {
-  # Temporarily disable errexit so cancelling ntsysv won't kill the script
   set +e
   dialog --clear \
          --title "Enable/Disable Services" \
          --msgbox "Launching ntsysv...\n\nUse space to toggle services, then OK to apply." \
          8 60
   ntsysv
-  # Re-enable errexit
   set -e
 }
 
-# ─── Top‑Level Main Menu ──────────────────────────────────────────────────────
+# ─── Top-Level Main Menu ──────────────────────────────────────────────────────
 main_menu() {
   while true; do
     exec 3>&1; set +e
@@ -172,5 +170,20 @@ main_menu() {
   clear
 }
 
-# ─── Startup ─────────────────────────────────────────────────────────────────
+# ---- Startup / direct jump (place after all function defs, before final main_menu) ----
+if [[ $# -ge 1 ]]; then
+  want="$1"
+  [[ "$want" != *.service ]] && want="${want}.service"
+
+  # Consider the unit "present" if systemd recognizes it (active or inactive)
+  if systemctl status "$want" >/dev/null 2>&1; then
+    rc=$?
+    if [[ $rc -eq 0 || $rc -eq 3 ]]; then
+      control_unit_menu "$want"
+      clear
+      exit 0
+    fi
+  fi
+fi
+
 main_menu
