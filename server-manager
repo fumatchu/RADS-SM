@@ -1,60 +1,63 @@
 #!/usr/bin/env bash
-#set -Eeuo pipefail
+# set -Eeuo pipefail
 
-# Keep the terminal sane even if dialog dies
 cleanup() { stty sane 2>/dev/null || true; tput cnorm 2>/dev/null || true; tput rmcup 2>/dev/null || true; }
 trap cleanup EXIT INT TERM
 
-# Always run from /root (prevents odd CLI output when launched from elsewhere)
 cd /root 2>/dev/null || cd "$HOME" || true
 
-# Require root
 if (( EUID != 0 )); then
   dialog --title "Permission Denied" --msgbox "Server Manager must be run as root." 7 60
-  clear
-  exit 1
+  clear; exit 1
 fi
 
-# Require dialog
 command -v dialog >/dev/null 2>&1 || { echo "dialog is required (dnf -y install dialog)"; exit 1; }
 
 TITLE="Server Manager"
 MOTD_FILE="/etc/motd"
 EXECUTABLE="/usr/bin/samba-dnf-pkg-update"
 
-# Show MOTD; optionally run helper in CLI (and DO NOT return)
 if [[ -s "$MOTD_FILE" ]]; then
   dialog --title "Message of the Day" --msgbox "$(sed -e 's/\r$//' "$MOTD_FILE")" 20 80
   if [[ -x "$EXECUTABLE" ]]; then
     if dialog --yesno "Run $EXECUTABLE now?\n\n(We'll exit the Server Manager UI and run it directly in the terminal.)" 9 76; then
-      # Clear dialog screen so CLI output doesn't overlap
-      dialog --clear
-      clear
-      stty sane 2>/dev/null || true
-      # Replace this process with the CLI program (no return to Server Manager)
+      dialog --clear; clear; stty sane 2>/dev/null || true
       exec "$EXECUTABLE"
     fi
   fi
 fi
 
+# ── Section headers in BLACK ───────────────────────────────────────────────────
+# Using --colors: \Z0=black, \Zn=reset
+SEP_APP=$'\Z0────────── Application Management ──────────\Zn'
+SEP_SRV=$'\Z0──────────── Server Management ─────────────\Zn'
+SEP_HLP=$'\Z0──────────────────── Help ───────────────────\Zn'
+
 items=(
-  1  "Active Directory Management"
-  2  "NTP Management"
-  3  "DHCP Management"
-  4  "Samba Management"
-  5  "Fail2Ban Management"
-  6  "Service Management"
-  7  "System Management"
-  8  "Backup/Restore"
-  9  "Server Management Options"
+  S1 "$SEP_APP"
+   1 "Active Directory Management"
+   2 "NTP Management"
+   3 "DHCP Management"
+   4 "Samba Management"
+   5 "Fail2Ban Management"
+
+  S2 "$SEP_SRV"
+   6 "Service Management"
+   7 "System Management"
+   8 "Backup/Restore"
+   9 "Server Management Options"
   10 "System Tools"
+
+  S3 "$SEP_HLP"
   11 "Welcome to Server Manager"
 )
 
 while true; do
-  choice=$(dialog --title "$TITLE" --backtitle "Server Management" \
-                  --menu "Please select" 20 60 11 "${items[@]}" \
-                  2>&1 >/dev/tty) || break
+  choice=$(dialog --colors --title "$TITLE" --backtitle "Server Management" \
+                  --menu "Please select" 22 70 16 "${items[@]}" 2>&1 >/dev/tty) || break
+
+  [[ "$choice" =~ ^S[0-9]+$ ]] && continue
+
   case "$choice" in
     1)  /root/.servman/ADMan ;;
     2)  /root/.servman/NTPMan/ntp_admin.sh ;;
