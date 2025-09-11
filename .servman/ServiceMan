@@ -1,39 +1,65 @@
 #!/usr/bin/env bash
+# ServiceMan – systemd service manager (dialog UI)
 set -euo pipefail
 
-# Consistent backtitle everywhere
-shopt -s expand_aliases
-alias dialog='dialog --backtitle "Service Manager"'
+# ─── Requirements ─────────────────────────────────────────────────────────────
+if ! command -v dialog >/dev/null 2>&1; then
+  echo "Error: dialog is required. Install it and retry." >&2
+  exit 1
+fi
 
+# Consistent backtitle + enable color tags everywhere we call dialog
+shopt -s expand_aliases
+alias dialog='dialog --backtitle "Service Manager" --colors'
+
+# ─── Admin tool mappings (optional helpers per unit) ──────────────────────────
 declare -A SERVICE_ADMIN_TOOLS=(
   [samba.service]="/root/.servman/SambaMan"
   [dhcpd.service]="/root/.servman/DHCPManager/dhcp-admin-dhcpd.sh"
   [kea-dhcp4.service]="/root/.servman/DHCPManager/dhcp-admin-kea.sh"
-  [kea-dhcp-ddns.service]="/root/.rfwb-admin/dhcp-admin.sh"
+#  [kea-dhcp-ddns.service]="/root/.rfwb-admin/dhcp-admin.sh"
   [chronyd.service]="/root/.servman/NTPMan/ntp_admin.sh"
   [fail2ban.service]="/root/.servman/jail-admin.sh"
 )
 
-# ─── Configuration ───────────────────────────────────────────────────────────
+# ─── Candidate units to list (only those present will be shown) ───────────────
 CANDIDATE_UNITS=(
   chronyd.service
   samba.service
   dhcpd.service
   fail2ban.service
-  kea-dhcp-ddns.service
+#  kea-dhcp-ddns.service
   kea-dhcp4.service
   sshd.service
-  cockpit.service
+  cockpit.socket
 )
 
-# ─── Helpers ─────────────────────────────────────────────────────────────────
-if ! command -v dialog &>/dev/null; then
-  echo "Error: dialog is required. Install it and retry." >&2
-  exit 1
-fi
-
+# ─── Helpers ──────────────────────────────────────────────────────────────────
 service_state() {
-  systemctl is-active "$1" 2>/dev/null || echo "unknown"
+  # Return exactly one token: active|inactive|failed|activating|deactivating|reloading|dead|unknown
+  local s
+  s=$(systemctl is-active "$1" 2>/dev/null) || true
+  echo "${s:-unknown}"
+}
+
+# Map systemd state -> friendly label
+pretty_state() {
+  case "$1" in
+    active)                  echo "running" ;;
+    inactive|dead|unknown)   echo "stopped" ;;
+    failed)                  echo "failed/stopped" ;;
+    activating|deactivating) echo "transitioning" ;;
+    *)                       echo "$1" ;;
+  esac
+}
+
+style_state() {
+  # dialog color tags: \Z1 red, \Z2 green, \Z3 yellow, \Zn reset
+  case "$1" in
+    running) echo $'\Z2running\Zn' ;;
+    stopped) echo $'\Z1stopped\Zn' ;;
+    *)       echo $'\Z3'"$1"$'\Zn' ;;
+  esac
 }
 
 get_installed_units() {
@@ -57,8 +83,7 @@ get_installed_units() {
 # ─── Unit Control Submenu ─────────────────────────────────────────────────────
 control_unit_menu() {
   local unit="$1"
-  local admin_script=""
-  local has_admin_script=false
+  local admin_script="" has_admin_script=false
 
   if [[ -n "${SERVICE_ADMIN_TOOLS[$unit]+_}" && -x "${SERVICE_ADMIN_TOOLS[$unit]}" ]]; then
     admin_script="${SERVICE_ADMIN_TOOLS[$unit]}"
@@ -66,48 +91,75 @@ control_unit_menu() {
   fi
 
   while true; do
+    # ---- derive status + colorized label ----
+    local a f label styled header
+    a=$(systemctl is-active "$unit" 2>/dev/null) || a=""
+    f=$(systemctl is-failed "$unit" 2>/dev/null) || f=""
+
+    if [[ "$f" == "failed" ]]; then
+      label="failed/stopped";         styled=$'\Z1failed/stopped\Zn'       # RED
+    elif [[ "$a" == "active" ]]; then
+      label="running";                styled=$'\Z2running\Zn'              # GREEN
+    elif [[ "$a" == "inactive" || "$a" == "dead" ]]; then
+      label="stopped";                styled=$'\Z1stopped\Zn'              # RED
+    elif [[ "$a" == "unknown" || "$f" == "unknown" || -z "$a" ]]; then
+      label="unknown/stopped";        styled=$'\Z1unknown/stopped\Zn'      # RED (your rule)
+    elif [[ "$a" == "activating" || "$a" == "deactivating" || "$a" == "reloading" ]]; then
+      label="transitioning";          styled=$'\Z3transitioning\Zn'        # YELLOW
+    else
+      # anything unexpected -> treat as unknown/stopped (RED)
+      label="unknown/stopped";        styled=$'\Z1unknown/stopped\Zn'
+    fi
+
+    header=$'Status: '"$styled"$'\n\nAction:'
+
+    # ---- menu ----
     exec 3>&1; set +e
-    options=(
+    local options=(
       1 "Start"
       2 "Stop"
       3 "Restart"
       4 "View Logs"
     )
     if [[ "$has_admin_script" == true ]]; then
-      options+=(5 "Launch Admin Tool")
-      options+=(6 "Back")
+      options+=(5 "Launch Admin Tool" 6 "Back")
     else
       options+=(5 "Back")
     fi
 
     choice=$(dialog --clear --title "Manage Unit: $unit" \
-      --menu "Status: $(service_state "$unit")    Action:" 20 70 10 "${options[@]}" \
-      2>&1 1>&3)
+                    --menu "$header" 20 70 10 "${options[@]}" \
+                    2>&1 1>&3)
     rc=$?; set -e; exec 3>&-
-    [ $rc -ne 0 ] && break
+    [[ $rc -ne 0 ]] && break
 
-    case $choice in
-      1) systemctl start "$unit" && dialog --msgbox "$unit started." 6 50 ;;
-      2) systemctl stop "$unit" && dialog --msgbox "$unit stopped." 6 50 ;;
+    case "$choice" in
+      1) systemctl start   "$unit" && dialog --msgbox "$unit started."   6 50 ;;
+      2) systemctl stop    "$unit" && dialog --msgbox "$unit stopped."   6 50 ;;
       3) systemctl restart "$unit" && dialog --msgbox "$unit restarted." 6 50 ;;
       4)
-        journalctl -u "$unit" -n 200 --no-pager > "/tmp/${unit//\//_}_logs.txt"
-        dialog --title "$unit Logs (arrows/PageUp/PageDown)" \
-               --tailbox "/tmp/${unit//\//_}_logs.txt" 30 120
-        ;;
+         journalctl -u "$unit" -n 200 --no-pager > "/tmp/${unit//\//_}_logs.txt"
+         dialog --title "$unit Logs (arrows/PageUp/PageDown)" \
+                --tailbox "/tmp/${unit//\//_}_logs.txt" 30 120
+         ;;
       5)
-        if [[ "$has_admin_script" == true ]]; then
-          "$admin_script"
-        else
-          break
-        fi
-        ;;
+         if [[ "$has_admin_script" == true ]]; then
+           "$admin_script"
+         else
+           break
+         fi
+         ;;
       6) break ;;
     esac
+    # loop to refresh status/colors after actions
   done
 }
 
-# ─── Manage Installed Units ────────────────────────────────────────────────────
+
+
+
+
+# ─── Manage Installed Units ───────────────────────────────────────────────────
 manage_units_menu() {
   while true; do
     mapfile -t UNITS < <( get_installed_units )
@@ -115,7 +167,25 @@ manage_units_menu() {
 
     menu_args=()
     for u in "${UNITS[@]}"; do
-      menu_args+=( "$u" "$(service_state "$u")" )
+      s=$(service_state "$u")
+      case "$s" in
+        active)
+          s_disp=$'\Z2active\Zn'                          # GREEN
+          ;;
+        inactive|dead)
+          s_disp=$'\Z1inactive\Zn'                        # RED
+          ;;
+        failed)
+          s_disp=$'\Z1failed\Zn'                          # RED
+          ;;
+        unknown|'')
+          s_disp=$'\Z1unknown/stopped\Zn'                 # RED (your rule)
+          ;;
+        *)
+          s_disp=$'\Z3'"$s"$'\Zn'                         # YELLOW for transitional states
+          ;;
+      esac
+      menu_args+=( "$u" "$s_disp" )
     done
 
     exec 3>&1; set +e
@@ -133,6 +203,7 @@ manage_units_menu() {
     control_unit_menu "$selected"
   done
 }
+
 
 # ─── Enable/Disable Services Submenu ──────────────────────────────────────────
 enable_disable_menu() {
@@ -159,9 +230,9 @@ main_menu() {
         2>&1 1>&3
     )
     rc=$?; set -e; exec 3>&-
-    [ $rc -ne 0 ] && break
+    [[ $rc -ne 0 ]] && break
 
-    case $choice in
+    case "$choice" in
       1) manage_units_menu   ;;
       2) enable_disable_menu ;;
       3) clear; exit 0       ;;
@@ -170,12 +241,11 @@ main_menu() {
   clear
 }
 
-# ---- Startup / direct jump (place after all function defs, before final main_menu) ----
+# ─── Direct jump support (e.g. `ServiceMan samba.service`) ────────────────────
 if [[ $# -ge 1 ]]; then
   want="$1"
   [[ "$want" != *.service ]] && want="${want}.service"
-
-  # Consider the unit "present" if systemd recognizes it (active or inactive)
+  # Consider "present" if systemd recognizes it (active or inactive)
   if systemctl status "$want" >/dev/null 2>&1; then
     rc=$?
     if [[ $rc -eq 0 || $rc -eq 3 ]]; then
@@ -186,4 +256,5 @@ if [[ $# -ge 1 ]]; then
   fi
 fi
 
+# ─── Start UI ─────────────────────────────────────────────────────────────────
 main_menu
