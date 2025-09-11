@@ -1,66 +1,95 @@
 #!/bin/bash
+set -Eeuo pipefail
 
-# --- Check if running as root ---
-if [[ "$(id -u)" -ne 0 ]]; then
-    dialog --title "Permission Denied" --msgbox "This program must be run as root.\nExiting..." 8 50
-    clear
-    exit 1
+# -------- cleanup so dialog never leaves the TTY weird --------
+cleanup() {
+  stty sane 2>/dev/null || true
+  tput cnorm 2>/dev/null || true
+  tput rmcup 2>/dev/null || true
+}
+trap cleanup EXIT INT TERM
+
+# -------- root check --------
+if (( EUID != 0 )); then
+  dialog --title "Permission Denied" --msgbox "This program must be run as root.\nExiting..." 8 50
+  clear
+  exit 1
 fi
 
-# --- Intro Message ---
+# -------- intro / confirm --------
 dialog --title "Server Management Update" --msgbox \
 "Server Management (SM-GUI) will be updated to the latest version from GitHub.
 
 This will download and install the latest installer script." 10 100
 
-# --- Confirmation Prompt ---
-dialog --title "Update SM-GUI?" --yesno "Do you want to update Server Management now?" 7 60
-CONFIRM=$?
+dialog --title "Update SM-GUI?" --yesno "Do you want to update Server Management now?" 7 60 || {
+  dialog --title "Cancelled" --msgbox "Update cancelled. No changes made." 6 50
+  clear
+  exit 0
+}
 
-if [[ $CONFIRM -eq 0 ]]; then
-    # --- Progress Dialog with Gauge ---
-    PIPE=$(mktemp -u)
-    mkfifo "$PIPE"
-    dialog --backtitle "Server Management Update" \
-           --title "Updating..." \
-           --gauge "Preparing update..." 10 60 0 <"$PIPE" &
-    exec 3>"$PIPE"
+# -------- run the whole update INSIDE a dialog scroller --------
+# We feed dialog --programbox from a subshell; stdbuf makes the output line-buffered.
+# (No other dialog is shown while this box is open.)
+if dialog --help 2>&1 | grep -q -- '--programbox'; then
+  dialog --backtitle "Server Management Update" --title "Updating..." --programbox 22 90 < <(
+    set -o pipefail
+    echo "[10%] Cleaning old autostart entry..."
+    sed -i '/server-manager/d' /root/.bash_profile || true
+    echo
 
-    (
-        echo "10" >"$PIPE"; echo "XXX" >"$PIPE"; echo "Cleaning old autostart entry..." >"$PIPE"; echo "XXX" >"$PIPE"
-        sed -i '/server-manager/d' /root/.bash_profile
-        sleep 0.5
+    echo "[30%] Ensuring wget is installed..."
+    dnf -y install wget 2>&1 | sed 's/^/    /'
+    echo
 
-        echo "30" >"$PIPE"; echo "XXX" >"$PIPE"; echo "Installing wget..." >"$PIPE"; echo "XXX" >"$PIPE"
-        dnf -y install wget >/dev/null 2>&1
-        sleep 0.5
+    echo "[60%] Downloading latest installer..."
+    cd /root/
+    wget -q https://raw.githubusercontent.com/fumatchu/RADS-SM/main/RADS-SMInstaller.sh && echo "    Downloaded RADS-SMInstaller.sh"
+    chmod 700 ./RADS-SMInstaller.sh
+    echo
 
-        echo "60" >"$PIPE"; echo "XXX" >"$PIPE"; echo "Downloading installer..." >"$PIPE"; echo "XXX" >"$PIPE"
-        cd /root/
-        wget -q https://raw.githubusercontent.com/fumatchu/RADS-SM/main/RADS-SMInstaller.sh
-        chmod 700 ./RADS-SMInstaller.sh
-        sleep 0.5
-
-        echo "80" >"$PIPE"; echo "XXX" >"$PIPE"; echo "Running installer..." >"$PIPE"; echo "XXX" >"$PIPE"
-        /root/RADS-SMInstaller.sh >/dev/null 2>&1
-        sleep 0.5
-
-        echo "100" >"$PIPE"; echo "XXX" >"$PIPE"; echo "Update complete!" >"$PIPE"; echo "XXX" >"$PIPE"
-    )
-
-    exec 3>&-
-    rm -f "$PIPE"
-
-    # --- Completion Message ---
-    dialog --title "Update Complete" --msgbox "Server Management has been updated to the latest version." 7 60
-
-    # --- Launch SM-GUI ---
-    server-manager
-
-    clear
-    exit 0
+    echo "[80%] Running installer..."
+    # Show installer output live; keep it line-buffered so it streams nicely.
+    stdbuf -oL -eL /root/RADS-SMInstaller.sh 2>&1 | sed 's/^/    /'
+    rc=${PIPESTATUS[0]}
+    echo
+    if [[ $rc -eq 0 ]]; then
+      echo "[100%] Update complete."
+    else
+      echo "[!] Installer exited with code $rc (see output above)."
+    fi
+  )
 else
-    dialog --title "Cancelled" --msgbox "Update cancelled. No changes made." 6 50
-    clear
-    exit 0
+  # Fallback for very old dialog (rare): emulate programbox with a temp log + tailbox
+  LOG=$(mktemp)
+  {
+    echo "[10%] Cleaning old autostart entry..."
+    sed -i '/server-manager/d' /root/.bash_profile || true
+    echo
+
+    echo "[30%] Ensuring wget is installed..."
+    dnf -y install wget 2>&1 | sed 's/^/    /'
+    echo
+
+    echo "[60%] Downloading latest installer..."
+    cd /root/
+    wget -q https://raw.githubusercontent.com/fumatchu/RADS-SM/main/RADS-SMInstaller.sh && echo "    Downloaded RADS-SMInstaller.sh"
+    chmod 700 ./RADS-SMInstaller.sh
+    echo
+
+    echo "[80%] Running installer..."
+    stdbuf -oL -eL /root/RADS-SMInstaller.sh 2>&1 | sed 's/^/    /'
+    echo
+    echo "[100%] Update complete."
+  } >>"$LOG" & PID=$!
+
+  dialog --backtitle "Server Management Update" --title "Updating..." --tailbox "$LOG" 22 90
+  wait "$PID" 2>/dev/null || true
+  rm -f "$LOG"
 fi
+
+# -------- final message and fresh session --------
+dialog --title "Update Complete" --msgbox "Server Management has been updated to the latest version." 7 60
+
+# Replace this process with a clean server-manager session
+exec server-manager
