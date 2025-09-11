@@ -1001,8 +1001,9 @@ main_menu(){
       3 "Edit kea-dhcp4.conf (validate, save, restart)" \
       4 "View Leases (raw/search/live)" \
       5 "MAC Reservations (add/delete)" \
-      6 "Restart KEA service" \
-      7 "Exit" \
+      6 "Restart Service" \
+      7 "Service Control" \
+      8 "Exit" \
       3>&1 1>&2 2>&3) || break
     case "$CH" in
       1)  scope_creator_menu ;;
@@ -1011,7 +1012,8 @@ main_menu(){
       4)  leases_menu ;;
       5)  reservations_menu ;;
       6)  restart_service ;;
-      7)  break ;;
+      7) "$DIALOG" --clear; clear; /root/.servman/ServiceMan kea-dhcp4.service || true ;;
+      8)  break ;;
       *)  break ;;
     esac
   done
