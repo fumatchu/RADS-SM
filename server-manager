@@ -1,77 +1,74 @@
-#!/bin/bash
-TEXTRESET=$(tput sgr0)
-RED=$(tput setaf 1)
-YELLOW=$(tput setaf 3)
-GREEN=$(tput setaf 2)
-user=$(whoami)
-#Checking for user permissions
-if [ "$user" != "root" ]; then
-    echo ${red}"This program must be run as root ${textreset}"
-    echo "Exiting"
-    exit
-else
-    echo "Running Program"
+#!/usr/bin/env bash
+#set -Eeuo pipefail
+
+# Keep the terminal sane even if dialog dies
+cleanup() { stty sane 2>/dev/null || true; tput cnorm 2>/dev/null || true; tput rmcup 2>/dev/null || true; }
+trap cleanup EXIT INT TERM
+
+# Always run from /root (prevents odd CLI output when launched from elsewhere)
+cd /root 2>/dev/null || cd "$HOME" || true
+
+# Require root
+if (( EUID != 0 )); then
+  dialog --title "Permission Denied" --msgbox "Server Manager must be run as root." 7 60
+  clear
+  exit 1
 fi
 
+# Require dialog
+command -v dialog >/dev/null 2>&1 || { echo "dialog is required (dnf -y install dialog)"; exit 1; }
+
+TITLE="Server Manager"
 MOTD_FILE="/etc/motd"
 EXECUTABLE="/usr/bin/samba-dnf-pkg-update"
 
-# Check if the MOTD file is empty
-if [ -s "$MOTD_FILE" ]; then
-    # Display the contents of the MOTD file
-    cat "$MOTD_FILE"
-
-    # Prompt the user if they want to run the executable
-    read -p "Do you want to run the $EXECUTABLE? (y/n): " response
-
-    # Convert the response to lowercase
-    response=$(echo "$response" | tr '[:upper:]' '[:lower:]')
-
-    # Run the executable if the user agrees
-    if [ "$response" == "y" ] || [ "$response" == "yes" ]; then
-        if [ -x "$EXECUTABLE" ]; then
-            echo "Running $EXECUTABLE..."
-            "$EXECUTABLE"
-        else
-            echo "Error: $EXECUTABLE is not executable or not found."
-        fi
-    else
-        echo "The executable was not run."
+# Show MOTD; optionally run helper in CLI (and DO NOT return)
+if [[ -s "$MOTD_FILE" ]]; then
+  dialog --title "Message of the Day" --msgbox "$(sed -e 's/\r$//' "$MOTD_FILE")" 20 80
+  if [[ -x "$EXECUTABLE" ]]; then
+    if dialog --yesno "Run $EXECUTABLE now?\n\n(We'll exit the Server Manager UI and run it directly in the terminal.)" 9 76; then
+      # Clear dialog screen so CLI output doesn't overlap
+      dialog --clear
+      clear
+      stty sane 2>/dev/null || true
+      # Replace this process with the CLI program (no return to Server Manager)
+      exec "$EXECUTABLE"
     fi
-else
-    echo ""
+  fi
 fi
 
-
-items=(1 "Active Directory Management"
-    2 "NTP Management"
-    3 "DHCP Management"
-    4 "Samba Management"
-    5 "Fail2Ban Management"
-    6 "Service Management"
-    7 "System Management"
-    8 "Backup/Restore"
-    9 "Server Management Options"
-    10 "System Tools"
-    11 "Welcome to Server Manager"
+items=(
+  1  "Active Directory Management"
+  2  "NTP Management"
+  3  "DHCP Management"
+  4  "Samba Management"
+  5  "Fail2Ban Management"
+  6  "Service Management"
+  7  "System Management"
+  8  "Backup/Restore"
+  9  "Server Management Options"
+  10 "System Tools"
+  11 "Welcome to Server Manager"
 )
 
-while choice=$(dialog --title "$TITLE" \
-    --backtitle "Server Management" \
-    --menu "Please select" 20 40 3 "${items[@]}" \
-    2>&1 >/dev/tty); do
-    case $choice in
-    1) /root/.servman/ADMan ;;
-    2) /root/.servman/NTPMan/ntp_admin.sh ;;
-    3) /root/.servman/DHCPMan ;;
-    4) /root/.servman/SambaMan ;;
-    5) /root/.servman/jail-admin.sh ;;
-    6) /root/.servman/ServiceMan ;;
-    7) /root/.servman/SYSMan ;;
-    8) /root/.servman/BackupMan.sh ;;
-    9) /root/.servman/SERVMan;;
-    10) /root/.servman/TOOLMan;;
-    11) /root/.servman/welcome.readme;;
-    esac
+while true; do
+  choice=$(dialog --title "$TITLE" --backtitle "Server Management" \
+                  --menu "Please select" 20 60 11 "${items[@]}" \
+                  2>&1 >/dev/tty) || break
+  case "$choice" in
+    1)  /root/.servman/ADMan ;;
+    2)  /root/.servman/NTPMan/ntp_admin.sh ;;
+    3)  /root/.servman/DHCPMan ;;
+    4)  /root/.servman/SambaMan ;;
+    5)  /root/.servman/jail-admin.sh ;;
+    6)  /root/.servman/ServiceMan ;;
+    7)  /root/.servman/SYSMan ;;
+    8)  /root/.servman/BackupMan.sh ;;
+    9)  /root/.servman/SERVMan ;;
+    10) /root/.servman/TOOLMan ;;
+    11) /root/.servman/welcome.readme ;;
+  esac
 done
-clear # clear after user pressed Cancel
+
+clear
+exit 0
