@@ -96,52 +96,125 @@ leases_tail(){
 
 leases_search(){
   [[ -f "$LEASES" ]] || die "Leases file not found: $LEASES"
-  local mode field query tmp="$TMPROOT/leases_search.$RANDOM.txt"
-  mode=$("$DIALOG" --menu "Search dataset" 10 50 2 \
-        1 "Active leases (by expiry)" \
-        2 "All lines (CSV filter)" 3>&1 1>&2 2>&3) || return 0
-  field=$("$DIALOG" --menu "Search by" 12 60 3 \
-        1 "MAC address" \
-        2 "Hostname" \
-        3 "Subnet (CIDR or prefix)" 3>&1 1>&2 2>&3) || return 0
 
-  case "$field" in
-    1) query=$("$DIALOG" --inputbox "MAC (partial ok): e.g. aa:bb:cc or aabbcc" 9 70 "" 3>&1 1>&2 2>&3) || return 0 ;;
-    2) query=$("$DIALOG" --inputbox "Hostname (partial, case-insensitive)" 8 70 "" 3>&1 1>&2 2>&3) || return 0 ;;
-    3) query=$("$DIALOG" --inputbox "CIDR (192.168.10.0/24) or dotted prefix (192.168.10.)" 9 70 "" 3>&1 1>&2 2>&3) || return 0 ;;
-  esac
-  query=$(trim "$query")
+  local mode query include_expired inc_raw rc
+  local tmp="$TMPROOT/leases_search.$RANDOM.txt"
+  local tmpk="$TMPROOT/leases_search.$RANDOM.keyed"
+  local now_epoch; now_epoch=$(date +%s)
+
+  mode=$($DIALOG --menu "Search dataset" 10 60 2 \
+           1 "Active leases (by expiry, sorted soonest first)" \
+           2 "All lines (CSV filter)" 3>&1 1>&2 2>&3) || return 0
 
   if [[ "$mode" == "1" ]]; then
-    # address,hwaddr,duid,valid_lifetime,expire,subnet_id,client_id,hostname,...
-    awk -F, -v IGNORECASE=1 -v q="$query" '
-      BEGIN{
-        printf "%-16s %-18s %-20s %-10s %-s\n", "IP","MAC","EXPIRES","SUBNET","HOSTNAME"
-        print "--------------------------------------------------------------------------"
+    # One screen: query + include-expired toggle
+    local form_out tmpf; tmpf=$(mktemp)
+    if $DIALOG --help 2>&1 | grep -q -- '--output-fd'; then
+      $DIALOG --output-fd 3 --form \
+        "Search (optional).\n• Leave Query blank to list ALL.\n• Text matches MAC/Hostname (case-insens.).\n• Or CIDR 192.168.10.0/24 or dotted prefix 192.168.10.\n• Include expired: y/n, on/off, true/false, 1/0." \
+        13 80 2 \
+        "Query:"            1 2  ""  1 18 54 0 \
+        "Include expired?:" 2 2  "n" 2 18 10 0 3>"$tmpf"; rc=$?
+    elif $DIALOG --help 2>&1 | grep -q -- '--stdout'; then
+      $DIALOG --stdout --form \
+        "Search (optional).\n• Leave Query blank to list ALL.\n• Text matches MAC/Hostname (case-insens.).\n• Or CIDR 192.168.10.0/24 or dotted prefix 192.168.10.\n• Include expired: y/n, on/off, true/false, 1/0." \
+        13 80 2 \
+        "Query:"            1 2  ""  1 18 54 0 \
+        "Include expired?:" 2 2  "n" 2 18 10 0 >"$tmpf"; rc=$?
+    else
+      $DIALOG --form \
+        "Search (optional).\n• Leave Query blank to list ALL.\n• Text matches MAC/Hostname (case-insens.).\n• Or CIDR 192.168.10.0/24 or dotted prefix 192.168.10.\n• Include expired: y/n, on/off, true/false, 1/0." \
+        13 80 2 \
+        "Query:"            1 2  ""  1 18 54 0 \
+        "Include expired?:" 2 2  "n" 2 18 10 0 2>"$tmpf" >/dev/tty; rc=$?
+    fi
+    [[ $rc -ne 0 ]] && { rm -f "$tmpf"; return 0; }
+    mapfile -t _F <"$tmpf"; rm -f "$tmpf"
+    query="$(trim "${_F[0]}")"; inc_raw="$(trim "${_F[1]}")"
+    case "${inc_raw,,}" in y|yes|on|true|1|x|"[x]") include_expired=1 ;; *) include_expired=0 ;; esac
+
+    # Expiry view — prints two sort keys then pretty row incl. STATUS
+    awk -F',' -v q="$query" -v now="$now_epoch" -v inc="$include_expired" '
+      function ip2n(ip,   p){ n=split(ip,p,"."); return (((p[1]*256)+p[2])*256 + p[3])*256 + p[4] }
+      function in_cidr(ip,c,   pp,net,pfx,blk){
+        n=split(c,pp,"/"); if(n!=2) return 0
+        net=ip2n(pp[1]); pfx=pp[2]+0; blk=2^(32-pfx)
+        return (int(ip2n(ip)/blk)==int(net/blk))
       }
-      function ip2n(ip,   a,b,c,d){ split(ip,p,"."); return (((p[1]*256)+p[2])*256 + p[3])*256 + p[4] }
-      function in_cidr(ip,c,   n,net,pfx,blk){ n=split(c,pp,"/"); net=ip2n(pp[1]); pfx=pp[2]+0; blk=2^(32-pfx); return (int(ip2n(ip)/blk)==int(net/blk)) }
-      NR>1 {
-        ip=$1; mac=$2; exp=$5; sid=$6; host=$8
-        if (q=="") ok=1
-        else if (host ~ q || mac ~ q) ok=1
-        else if (q ~ /^([0-9]{1,3}\.){3}[0-9]{1,3}\/[0-9]+$/) { ok=in_cidr(ip,q) }
-        else if (q ~ /^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.$/) { ok=index(ip,q)==1 }
-        else ok=0
-        if(ok) printf "%-16s %-18s %-20s %-10s %-s\n", ip, mac, exp, sid, host
+      function to_epoch(s,   a){
+        gsub(/\r/,"",s)
+        if (s ~ /^[0-9]+$/) return s+0
+        if (match(s,/^([0-9]{4})-([0-9]{2})-([0-9]{2})[ T]([0-9]{2}):([0-9]{2}):([0-9]{2})/,a))
+          return mktime(a[1]" "a[2]" "a[3]" "a[4]" "a[5]" "a[6])
+        return 0  # unknown → treat as expired
       }
-    ' "$LEASES" > "$tmp"
+      NR==1 {
+        for (i=1;i<=NF;i++){ gsub(/\r/,"",$i); h[$i]=i }
+        ci_addr=h["address"]; ci_mac=h["hwaddr"]; ci_exp=h["expire"]
+        ci_sid=(h["subnet_id"]?h["subnet_id"]:h["subnet-id"]); ci_host=h["hostname"]
+        q_lc=tolower(q)
+        next
+      }
+      { sub(/\r$/,"") }
+      {
+        ip      = (ci_addr? $(ci_addr) : "")
+        mac     = (ci_mac ? $(ci_mac)  : "")
+        expires = (ci_exp ? $(ci_exp)  : "")
+        sid     = (ci_sid ? $(ci_sid)  : "")
+        host    = (ci_host? $(ci_host) : ""); gsub(/^ +| +$/,"",host)
+
+        exp_epoch = to_epoch(expires)
+        is_expired = (exp_epoch < now ? 1 : 0)
+        if (!inc && is_expired) next
+
+        ok = (q_lc=="")
+        if (!ok) {
+          if (index(tolower(host), q_lc) || index(tolower(mac), q_lc)) ok=1
+          else if (q ~ /^([0-9]{1,3}\.){3}[0-9]{1,3}\/[0-9]+$/) ok=in_cidr(ip,q)
+          else if (q ~ /^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.$/) ok=(index(ip,q)==1)
+        }
+        if (ok) {
+          status = (is_expired ? "EXPIRED" : "ACTIVE")
+          printf "%d\t%010d\t%-16s %-18s %-20s %-10s %-8s %-s\n",
+                 is_expired, (exp_epoch?exp_epoch:9999999999),
+                 ip, mac, expires, sid, status, host
+        }
+      }
+    ' "$LEASES" > "$tmpk"
+
+    if [[ ! -s "$tmpk" ]]; then
+      $DIALOG --msgbox "$([[ $include_expired -eq 1 ]] && echo "No leases matched." || echo "No active leases matched.")" 6 44
+      rm -f "$tmpk"; return 0
+    fi
+
+    {
+      printf "%-16s %-18s %-20s %-10s %-8s %-s\n" "IP" "MAC" "EXPIRES" "SUBNET" "STATUS" "HOSTNAME"
+      echo "---------------------------------------------------------------------------------------"
+      sort -n -k1,1 -k2,2 "$tmpk" | cut -f3-
+    } > "$tmp"
+    rm -f "$tmpk"
+
   else
-    awk -F, -v IGNORECASE=1 -v q="$query" '
+    # CSV filter (raw, active + expired); blank query = all
+    query=$($DIALOG --inputbox "CSV filter (optional). Blank = show ALL." 8 70 "" 3>&1 1>&2 2>&3) || return 0
+    query=$(trim "$query")
+    awk -F',' -v q="$query" '
       NR==1 { print; next }
-      { line=$0; gsub(/\r$/,"",line);
-        if (q=="" || tolower(line) ~ tolower(q)) print line
+      { line=$0; sub(/\r$/,"",line)
+        if (q=="") print line
+        else if (index(tolower(line), tolower(q))) print line
       }
     ' "$LEASES" > "$tmp"
   fi
 
-  if [[ ! -s "$tmp" ]]; then "$DIALOG" --msgbox "No results." 6 24; else "$DIALOG" --title "Search results" --textbox "$tmp" 0 0; fi
+  if [[ ! -s "$tmp" ]]; then
+    $DIALOG --msgbox "No results." 6 24
+  else
+    $DIALOG --title "Search results" --textbox "$tmp" 0 0
+  fi
 }
+
+
 
 leases_menu(){
   while :; do
@@ -609,7 +682,7 @@ delete_mac_reservation(){
     MENU+=("${mac}|${sid}" "$label" off)
   done
 
-  #Robust capture: stdout gets the values; stderr goes to the screen
+  # ✅ Robust capture: stdout gets the values; stderr goes to the screen
   sel=$("$DIALOG" --separate-output --checklist "Select reservation(s) to delete:" 22 90 12 "${MENU[@]}" 3>&1 1>&2 2>&3) || return 0
   # Convert newline-separated tags to space-separated string
   sel=$(echo "$sel" | tr '\n' ' ' | sed 's/^ *//;s/ *$//')
