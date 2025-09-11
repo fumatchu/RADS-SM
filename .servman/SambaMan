@@ -161,7 +161,7 @@ while true; do
                   1 "Edit Samba Configuration" \
                   2 "Check Samba Status" \
                   3 "Samba Repo Sync Log" \
-                  4 "Samba Service Control (via Service Manager)" \
+                  4 "Service Control" \
                   5 "Samba Package Rebuild/Update" \
                   6 "Exit" \
                   3>&1 1>&2 2>&3 3>&-)
