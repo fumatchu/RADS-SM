@@ -292,7 +292,8 @@ chrony_menu_dialog() {
     2 "Manual: edit chrony.conf"
     3 "Allowed clients: manage chrony 'allow' entries"
     4 "View current Chrony status"
-    5 "Quit"
+    5 "Service Management"
+    6 "Quit"
   )
 
   while true; do
@@ -305,7 +306,12 @@ chrony_menu_dialog() {
       2) manual_edit_chrony_dialog ;;
       3) ntp_set_allow_dialog ;;
       4) _show_status ;;
-      5|"") clear; break ;;
+      5)
+       # hand off to ServiceMan focused on chronyd.service, then return here
+       dialog --clear; clear
+       /root/.servman/ServiceMan chronyd.service
+       ;;
+      6|"") clear; break ;;
     esac
   done
 }
