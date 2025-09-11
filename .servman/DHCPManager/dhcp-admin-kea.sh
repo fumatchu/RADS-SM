@@ -796,19 +796,191 @@ PY
   fi
 }
 
+browse_mac_reservations(){
+  cmd_exists jq || die "jq is required."
+  cmd_exists python3 || die "python3 is required."
+  [[ -f "$CONF" ]] || die "$CONF not found."
+
+  # ── collect subnets for menu
+  mapfile -t SUBS < <(jq -r '.Dhcp4.subnet4[] | "\(.id)|\(.subnet)|\(.comment // "(no comment)")"' "$CONF")
+  if [[ ${#SUBS[@]} -eq 0 ]]; then
+    "$DIALOG" --msgbox "No subnets found in $CONF." 6 50
+    return 0
+  fi
+
+  local MENU_ARGS=()
+  MENU_ARGS+=( "ALL" "All subnets" )
+  for line in "${SUBS[@]}"; do
+    IFS="|" read -r sid cidr desc <<<"$line"
+    MENU_ARGS+=( "$sid" "ID $sid  -  $cidr  -  ${desc}" )
+  done
+
+  local SUB_PICK
+  SUB_PICK=$("$DIALOG" --menu "Choose subnet to browse" 18 80 10 "${MENU_ARGS[@]}" 3>&1 1>&2 2>&3) || return 0
+
+  # ── optional query
+  local query qlc
+  query=$("$DIALOG" --inputbox "Search (optional)\n• Matches MAC / IP / Hostname (case-insensitive)\n• Leave blank to list all" 10 72 "" 3>&1 1>&2 2>&3) || return 0
+  query=$(trim "$query"); qlc=${query,,}
+
+  # ── pull reservations (as TSV): SID<TAB>SUBNET<TAB>DESC<TAB>MAC<TAB>IP<TAB>HOST
+  local jq_prog jq_args=()
+  if [[ "$SUB_PICK" == "ALL" ]]; then
+    jq_prog='.Dhcp4.subnet4[]
+      | .id as $sid | .subnet as $cidr | .comment as $desc
+      | (.reservations // [])[]?
+      | [$sid, $cidr, ($desc // "(no comment)"), ."hw-address", ."ip-address", (.hostname // "")]
+      | @tsv'
+  else
+    jq_prog='
+      .Dhcp4.subnet4[]
+      | select(.id == $sid)
+      | .id as $sid | .subnet as $cidr | .comment as $desc
+      | (.reservations // [])[]?
+      | [$sid, $cidr, ($desc // "(no comment)"), ."hw-address", ."ip-address", (.hostname // "")]
+      | @tsv'
+    jq_args=(--argjson sid "$SUB_PICK")
+  fi
+
+  mapfile -t RAW < <(jq -r "${jq_args[@]}" "$jq_prog" "$CONF")
+  if [[ ${#RAW[@]} -eq 0 ]]; then
+    "$DIALOG" --msgbox "No reservations found for the selected scope." 6 60
+    return 0
+  fi
+
+  # ── apply query on MAC/IP/HOST (case-insensitive)
+  local FILTERED=()
+  if [[ -n "$qlc" ]]; then
+    for row in "${RAW[@]}"; do
+      IFS=$'\t' read -r sid cidr desc mac ip host <<<"$row"
+      if [[ "${mac,,}" == *"$qlc"* || "${ip,,}" == *"$qlc"* || "${host,,}" == *"$qlc"* ]]; then
+        FILTERED+=("$row")
+      fi
+    done
+  else
+    FILTERED=("${RAW[@]}")
+  fi
+
+  if [[ ${#FILTERED[@]} -eq 0 ]]; then
+    "$DIALOG" --msgbox "No reservations match your search." 6 44
+    return 0
+  fi
+
+  # ── pretty table + keys for checklist
+  local tmp_table tmp_keys
+  tmp_table=$(mktemp); tmp_keys=$(mktemp)
+  {
+    printf "%-6s %-18s %-22s %-18s %-16s %-s\n" "SID" "SUBNET" "DESC" "MAC" "IP" "HOSTNAME"
+    echo   "---------------------------------------------------------------------------------------------------------------"
+    for row in "${FILTERED[@]}"; do
+      IFS=$'\t' read -r sid cidr desc mac ip host <<<"$row"
+      printf "%-6s %-18s %-22s %-18s %-16s %-s\n" "$sid" "$cidr" "$desc" "$mac" "$ip" "$host"
+      label="$mac → $ip"; [[ -n "$host" ]] && label+=" ($host)"; label+="  -  $desc [SID $sid]"
+      # Write TAG<TAB>LABEL so TAG can contain a literal '|'
+      printf "%s\t%s\n" "${mac}|${sid}" "$label" >>"$tmp_keys"
+    done
+  } >"$tmp_table"
+
+  "$DIALOG" --title "Reservations (browse)" --textbox "$tmp_table" 0 0
+
+  # ── ask to delete from this subset
+  "$DIALOG" --yesno "Delete any reservation(s) from this result set?" 7 60 || { rm -f "$tmp_table" "$tmp_keys"; return 0; }
+
+  # checklist built from subset (read TAG and LABEL separated by TAB)
+  local CK_ARGS=() tag lbl
+  while IFS=$'\t' read -r tag lbl; do
+    CK_ARGS+=( "$tag" "$lbl" off )
+  done <"$tmp_keys"
+  rm -f "$tmp_table" "$tmp_keys"
+
+  # Separate-output -> one TAG per line (each TAG is mac|sid)
+  local sel
+  sel=$("$DIALOG" --separate-output --checklist "Select reservation(s) to delete:" 22 100 14 "${CK_ARGS[@]}" 3>&1 1>&2 2>&3) || return 0
+  sel=$(echo "$sel" | tr '\n' ' ' | sed 's/^ *//;s/ *$//')
+  [[ -z "$sel" ]] && { "$DIALOG" --msgbox "No reservations selected." 6 40; return 0; }
+
+  # ── perform deletion using the existing Python mutator
+  local tmp_json tmp_cnt
+  tmp_json=$(mktemp); tmp_cnt=$(mktemp)
+
+  if ! python3 - "$CONF" "$sel" "$tmp_cnt" > "$tmp_json" <<'PY'
+import json, sys
+conf_path, picks_raw, cnt_path = sys.argv[1], sys.argv[2], sys.argv[3]
+targets=set()
+for tok in (picks_raw or "").split():
+    if "|" in tok:
+        mac,sid = tok.split("|",1)
+        try:
+            targets.add((mac.strip().lower(), int(sid.strip())))
+        except ValueError:
+            pass
+
+with open(conf_path,"r") as f:
+    data=json.load(f)
+
+removed=0
+dhcp4 = data.get("Dhcp4", {})
+for subnet in dhcp4.get("subnet4", []) or []:
+    sid = subnet.get("id")
+    res = subnet.get("reservations")
+    if not res:
+        continue
+    keep=[]
+    for r in res:
+        mac=(r.get("hw-address") or "").lower()
+        if (mac, sid) in targets:
+            removed += 1
+        else:
+            keep.append(r)
+    if keep:
+        subnet["reservations"]=keep
+    else:
+        subnet.pop("reservations", None)
+
+with open(cnt_path,"w") as cf:
+    cf.write(str(removed))
+
+json.dump(data, sys.stdout, indent=2)
+PY
+  then
+    rm -f "$tmp_json" "$tmp_cnt"
+    "$DIALOG" --msgbox "Failed to update configuration." 6 44
+    return 1
+  fi
+
+  local removed; removed=$(cat "$tmp_cnt" 2>/dev/null || echo 0); rm -f "$tmp_cnt"
+  if [[ "$removed" -eq 0 ]]; then
+    rm -f "$tmp_json"
+    "$DIALOG" --msgbox "No matching reservation(s) found to delete.\n\nSelected: $sel" 10 70
+    return 0
+  fi
+
+  if kea_validate "$tmp_json"; then
+    cp -a "$CONF" "${CONF}.bak.$(date +%Y%m%d%H%M%S)" || true
+    mv -f "$tmp_json" "$CONF"
+    chown kea:kea "$CONF"; chmod 640 "$CONF"; restorecon "$CONF" 2>/dev/null || true
+    systemctl restart "$SERVICE" >/dev/null 2>&1 || true
+    "$DIALOG" --msgbox "Deleted $removed reservation(s) and restarted $SERVICE." 6 64
+  else
+    rm -f "$tmp_json"
+    "$DIALOG" --msgbox "KEA config validation FAILED; no changes written." 7 64
+  fi
+}
 
 
 reservations_menu(){
   while :; do
-    CH=$("$DIALOG" --menu "MAC Reservations" 14 60 6 \
+    CH=$("$DIALOG" --menu "MAC Reservations" 16 72 8 \
       1 "Add MAC reservation" \
-      2 "Delete MAC reservation(s)" \
-      3 "Back to main menu" \
+      2 "Browse/search reservations (view + optional delete)" \
+      3 "Delete MAC reservation(s) (classic)" \
+      4 "Back to main menu" \
       3>&1 1>&2 2>&3) || break
     case "$CH" in
       1) add_mac_reservation ;;
-      2) delete_mac_reservation ;;
-      3) break ;;
+      2) browse_mac_reservations ;;
+      3) delete_mac_reservation ;;
+      4) break ;;
     esac
   done
 }
