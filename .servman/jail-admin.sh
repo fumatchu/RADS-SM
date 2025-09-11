@@ -250,6 +250,7 @@ EOL
       4 "Show recent bans" \
       5 "Unban an IP" \
       6 "Manual edit sshd.local" \
+      7 "Service Control" \
       0 "Exit" 2>&1 >/dev/tty) || break
 
     case "$choice" in
@@ -362,6 +363,10 @@ bantime.factor:    $FACTOR" 16 64
       4) show_recent_bans ;;
       5) unban_ip ;;
       6) manual_edit_sshd_local ;;
+      7) # hand off to ServiceMan focused on fail2ban.service, then return here
+       dialog --clear; clear
+       /root/.servman/ServiceMan fail2ban.service
+       ;;
       0) break ;;
     esac
   done
