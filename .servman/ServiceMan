@@ -140,7 +140,7 @@ control_unit_menu() {
       4)
          journalctl -u "$unit" -n 200 --no-pager > "/tmp/${unit//\//_}_logs.txt"
          dialog --title "$unit Logs (arrows/PageUp/PageDown)" \
-                --tailbox "/tmp/${unit//\//_}_logs.txt" 30 120
+                --tailbox "/tmp/${unit//\//_}_logs.txt" 30 260
          ;;
       5)
          if [[ "$has_admin_script" == true ]]; then
